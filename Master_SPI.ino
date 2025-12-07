@@ -1,4 +1,3 @@
-
 // Master
 #include <SPI.h>
 #include <LiquidCrystal.h>
@@ -37,11 +36,9 @@ SlaveData slave1Data = {0, 0, 0, false};
 SlaveData slave2Data = {0, 0, 0, false};
 SlaveData slave3Data = {0, 0, 0, false};
 
-unsigned long lastPollTime = 0;
-unsigned long pollInterval = 2000;  // Polling otomatis setiap 2 detik
 unsigned long lastLCDUpdate = 0;
 unsigned long lastPCDisplay = 0;
-unsigned long pcDisplayInterval = 500;  // Tampilkan PC request setiap 500ms
+unsigned long pcDisplayInterval = 10;  // Cepat: 10ms
 uint8_t currentLCDPage = 0;
 
 // PC Request variables
@@ -50,16 +47,15 @@ uint8_t requestedSlave = 0;
 uint8_t requestedData = 0;
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);  // Baud rate tinggi untuk kecepatan
   Serial.println(F("================================="));
-  Serial.println(F("Master SPI Controller"));
+  Serial.println(F("Master SPI Controller - FAST"));
   Serial.println(F("================================="));
   Serial.println(F("PC Commands: XY"));
   Serial.println(F("  X = Slave ID (1-3)"));
-  Serial.println(F("  Y = Data Select (bit combination):"));
-  Serial.println(F("    1=PB2, 2=ADC, 3=PB2+ADC, 4=CNT"));
-  Serial.println(F("    5=PB2+CNT, 6=ADC+CNT, 7=ALL"));
-  Serial.println(F("Example: 11=S1 PB2, 13=S1 PB2+ADC, 27=S2 ALL"));
+  Serial.println(F("  Y = Data (1-7):"));
+  Serial.println(F("    1=PB2, 2=ADC, 3=PB2+ADC"));
+  Serial.println(F("    4=CNT, 5=PB2+CNT, 6=ADC+CNT, 7=ALL"));
   Serial.println(F("Send 'STOP' to stop display"));
   Serial.println(F("================================="));
   
@@ -68,9 +64,9 @@ void setup() {
   lcd.print("Master Ready");
   delay(1000);
   
-  // Initialize SPI
+  // Initialize SPI dengan clock cepat
   SPI.begin();
-  SPI.setClockDivider(SPI_CLOCK_DIV128);
+  SPI.setClockDivider(SPI_CLOCK_DIV8);  // Lebih cepat
   SPI.setDataMode(SPI_MODE0);
   SPI.setBitOrder(MSBFIRST);
   
@@ -82,27 +78,21 @@ void setup() {
   digitalWrite(SS_SLAVE2, HIGH);
   digitalWrite(SS_SLAVE3, HIGH);
   
-  Serial.println(F("System Ready!"));
-  Serial.println(F("Auto polling aktif (background)"));
+  Serial.println(F("Ready! (Non-blocking mode)"));
   Serial.println();
 }
 
 void loop() {
-  // Polling otomatis semua slave setiap 2 detik
-  if (millis() - lastPollTime >= 10) {
-    lastPollTime = millis();
-    pollAllSlaves();
-  }
-  
+  // Update LCD (non-blocking)
   if (millis() - lastLCDUpdate >= 500) {
     lastLCDUpdate = millis();
     updateLCD();
   }
   
-  // Tampilkan PC request secara periodik
-  if (pcRequestActive && (millis() - lastPCDisplay >= 10)) {
+  // Tampilkan PC request secara periodik (cepat, non-blocking)
+  if (pcRequestActive && (millis() - lastPCDisplay >= pcDisplayInterval)) {
     lastPCDisplay = millis();
-    displayPCRequest();
+    fetchAndDisplay();  // Ambil data fresh dari slave dan tampilkan
   }
   
   // Handle request dari PC
@@ -111,44 +101,94 @@ void loop() {
   }
 }
 
-// Polling semua slave dan simpan ke EEPROM (silent mode)
-void pollAllSlaves() {
-  // Poll Slave 1
-  pollSlave(0x01, SS_SLAVE1, slave1Data, EEPROM_SLAVE1_BASE);
-  delay(5);
+// Ambil data dari slave dan tampilkan langsung (non-blocking)
+void fetchAndDisplay() {
+  uint8_t ssPin;
+  int eepromBase;
+  SlaveData* dataPtr;
   
-  // Poll Slave 2
-  pollSlave(0x02, SS_SLAVE2, slave2Data, EEPROM_SLAVE2_BASE);
-  delay(5);
+  switch (requestedSlave) {
+    case 1:
+      ssPin = SS_SLAVE1;
+      eepromBase = EEPROM_SLAVE1_BASE;
+      dataPtr = &slave1Data;
+      break;
+    case 2:
+      ssPin = SS_SLAVE2;
+      eepromBase = EEPROM_SLAVE2_BASE;
+      dataPtr = &slave2Data;
+      break;
+    case 3:
+      ssPin = SS_SLAVE3;
+      eepromBase = EEPROM_SLAVE3_BASE;
+      dataPtr = &slave3Data;
+      break;
+  }
   
-  // Poll Slave 3
-  pollSlave(0x03, SS_SLAVE3, slave3Data, EEPROM_SLAVE3_BASE);
-  delay(5);
+  // Ambil data dari slave secara cepat
+  bool success = quickPollSlave(requestedSlave, ssPin, *dataPtr, eepromBase);
+  
+  if (success) {
+    // Tampilkan data sesuai request
+    Serial.print(F(">>> "));
+    
+    switch (requestedData) {
+      case 1: // PB2 only
+        Serial.println(dataPtr->pb2);
+        break;
+        
+      case 2: // ADC only
+        Serial.println(dataPtr->analog);
+        break;
+        
+      case 3: // PB2 + ADC
+        Serial.print(dataPtr->pb2);
+        Serial.print(F(" "));
+        Serial.println(dataPtr->analog);
+        break;
+        
+      case 4: // Counter only
+        Serial.println(dataPtr->counter);
+        break;
+        
+      case 5: // PB2 + Counter
+        Serial.print(dataPtr->pb2);
+        Serial.print(F(" "));
+        Serial.println(dataPtr->counter);
+        break;
+        
+      case 6: // ADC + Counter
+        Serial.print(dataPtr->analog);
+        Serial.print(F(" "));
+        Serial.println(dataPtr->counter);
+        break;
+        
+      case 7: // ALL
+        Serial.print(dataPtr->pb2);
+        Serial.print(F(" "));
+        Serial.print(dataPtr->analog);
+        Serial.print(F(" "));
+        Serial.println(dataPtr->counter);
+        break;
+    }
+  }
 }
 
-// Polling individual slave (silent mode)
-void pollSlave(uint8_t slaveID, uint8_t ssPin, SlaveData &data, int eepromBase) {
+// Quick polling slave (optimized, minimal delay)
+bool quickPollSlave(uint8_t slaveID, uint8_t ssPin, SlaveData &data, int eepromBase) {
   bool success = true;
   
   // Read PB2
   uint8_t pb2 = readValue(slaveID, ssPin, CMD_READ_VALUE);
-  if (pb2 == 0xFF) {
-    success = false;
-  }
-  delay(50);
+  if (pb2 == 0xFF) success = false;
   
   // Read Analog
   uint16_t analog = readSensor(slaveID, ssPin, CMD_READ_SENSOR);
-  if (analog == 0xFFFF) {
-    success = false;
-  }
-  delay(50);
+  if (analog == 0xFFFF) success = false;
   
   // Read Counter
   uint8_t counter = readValue(slaveID, ssPin, CMD_READ_COUNTER);
-  if (counter == 0xFF) {
-    success = false;
-  }
+  if (counter == 0xFF) success = false;
   
   if (success) {
     data.pb2 = pb2;
@@ -158,39 +198,40 @@ void pollSlave(uint8_t slaveID, uint8_t ssPin, SlaveData &data, int eepromBase) 
     
     // Simpan ke EEPROM
     saveSlaveToEEPROM(eepromBase, data);
-  } else {
-    data.valid = false;
+    return true;
   }
+  
+  data.valid = false;
+  return false;
 }
 
-// Baca single byte value dari slave
+// Baca single byte value dari slave (optimized)
 uint8_t readValue(uint8_t slaveID, uint8_t ssPin, uint8_t cmd) {
   uint8_t checksum = slaveID ^ cmd;
   
   digitalWrite(ssPin, LOW);
-  delayMicroseconds(50);
+  delayMicroseconds(20);
   
   // Kirim command
   SPI.transfer(SYNC1);
-  delayMicroseconds(20);
+  delayMicroseconds(10);
   SPI.transfer(SYNC2);
-  delayMicroseconds(20);
+  delayMicroseconds(10);
   SPI.transfer(slaveID);
-  delayMicroseconds(20);
+  delayMicroseconds(10);
   SPI.transfer(cmd);
-  delayMicroseconds(20);
+  delayMicroseconds(10);
   SPI.transfer(checksum);
-  delayMicroseconds(100);
+  delayMicroseconds(50);
   
   // Baca response
   uint8_t response[15];
   for (int i = 0; i < 15; i++) {
     response[i] = SPI.transfer(0x00);
-    delayMicroseconds(20);
+    delayMicroseconds(10);
   }
   
   digitalWrite(ssPin, HIGH);
-  delayMicroseconds(50);
   
   // Cari sync pattern
   for (int i = 0; i < 10; i++) {
@@ -210,34 +251,33 @@ uint8_t readValue(uint8_t slaveID, uint8_t ssPin, uint8_t cmd) {
   return 0xFF;
 }
 
-// Baca sensor (2 bytes) dari slave
+// Baca sensor (2 bytes) dari slave (optimized)
 uint16_t readSensor(uint8_t slaveID, uint8_t ssPin, uint8_t cmd) {
   uint8_t checksum = slaveID ^ cmd;
   
   digitalWrite(ssPin, LOW);
-  delayMicroseconds(50);
+  delayMicroseconds(20);
   
   // Kirim command
   SPI.transfer(SYNC1);
-  delayMicroseconds(20);
+  delayMicroseconds(10);
   SPI.transfer(SYNC2);
-  delayMicroseconds(20);
+  delayMicroseconds(10);
   SPI.transfer(slaveID);
-  delayMicroseconds(20);
+  delayMicroseconds(10);
   SPI.transfer(cmd);
-  delayMicroseconds(20);
+  delayMicroseconds(10);
   SPI.transfer(checksum);
-  delayMicroseconds(100);
+  delayMicroseconds(50);
   
   // Baca response
   uint8_t response[15];
   for (int i = 0; i < 15; i++) {
     response[i] = SPI.transfer(0x00);
-    delayMicroseconds(20);
+    delayMicroseconds(10);
   }
   
   digitalWrite(ssPin, HIGH);
-  delayMicroseconds(50);
   
   // Cari sync pattern
   for (int i = 0; i < 9; i++) {
@@ -264,16 +304,6 @@ void saveSlaveToEEPROM(int base, SlaveData &data) {
   EEPROM.update(base + 1, (data.analog >> 8) & 0xFF);
   EEPROM.update(base + 2, data.analog & 0xFF);
   EEPROM.update(base + 3, data.counter);
-}
-
-// Baca data slave dari EEPROM
-SlaveData loadSlaveFromEEPROM(int base) {
-  SlaveData data;
-  data.pb2 = EEPROM.read(base + 0);
-  data.analog = (EEPROM.read(base + 1) << 8) | EEPROM.read(base + 2);
-  data.counter = EEPROM.read(base + 3);
-  data.valid = true;
-  return data;
 }
 
 // Update LCD display
@@ -359,72 +389,9 @@ void handlePCRequest() {
   pcRequestActive = true;
   lastPCDisplay = 0; // Langsung tampilkan
   
-  Serial.print(F("\n[Displaying S"));
+  Serial.print(F("\n[S"));
   Serial.print(slaveNum);
-  Serial.print(F(" Data "));
+  Serial.print(F(" D"));
   Serial.print(dataSelect);
-  Serial.println(F(" - send STOP to stop]"));
-}
-
-// Tampilkan data PC request secara periodik
-void displayPCRequest() {
-  int eepromBase;
-  
-  switch (requestedSlave) {
-    case 1:
-      eepromBase = EEPROM_SLAVE1_BASE;
-      break;
-    case 2:
-      eepromBase = EEPROM_SLAVE2_BASE;
-      break;
-    case 3:
-      eepromBase = EEPROM_SLAVE3_BASE;
-      break;
-  }
-  
-  // Baca data dari EEPROM
-  SlaveData data = loadSlaveFromEEPROM(eepromBase);
-  
-  // Tampilkan data sesuai bit selection (terus menerus)
-  Serial.print(F(">>> "));
-  
-  switch (requestedData) {
-    case 1: // PB2 only
-      Serial.println(data.pb2);
-      break;
-      
-    case 2: // ADC only
-      Serial.println(data.analog);
-      break;
-      
-    case 3: // PB2 + ADC
-      Serial.print(data.pb2);
-      Serial.print(F(" "));
-      Serial.println(data.analog);
-      break;
-      
-    case 4: // Counter only
-      Serial.println(data.counter);
-      break;
-      
-    case 5: // PB2 + Counter
-      Serial.print(data.pb2);
-      Serial.print(F(" "));
-      Serial.println(data.counter);
-      break;
-      
-    case 6: // ADC + Counter
-      Serial.print(data.analog);
-      Serial.print(F(" "));
-      Serial.println(data.counter);
-      break;
-      
-    case 7: // ALL
-      Serial.print(data.pb2);
-      Serial.print(F(" "));
-      Serial.print(data.analog);
-      Serial.print(F(" "));
-      Serial.println(data.counter);
-      break;
-  }
+  Serial.println(F(" - STOP to stop]"));
 }
