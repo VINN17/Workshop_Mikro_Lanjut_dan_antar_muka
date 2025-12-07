@@ -1,8 +1,10 @@
 # Workshop_Mikro_Lanjut_dan_antar_muka
-
 # Multi-Slave SPI Communication System
 
 Sistem komunikasi SPI Master-Slave yang mendukung hingga 3 slave device dengan protokol komunikasi custom, LCD display, dan EEPROM storage. Sistem ini dirancang untuk komunikasi cepat dan non-blocking dengan PC request interface.
+
+open link presentasi:
+https://vinn17.github.io/Workshop_Mikro_Lanjut_dan_antar_muka/
 
 ## 🎯 Fitur Utama
 
