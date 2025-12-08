@@ -1,1803 +1,1786 @@
-<!DOCTYPE html>
-<html lang="id">
+</div>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>Step 7: Master Request ADC (CMD 0x02)</h3>
+                    <p>Master mengirim request ADC sensor</p>
+                    <div class="code-block">
+<span class="comment">// Send CMD_READ_SENSOR</span>
+SPI.transfer(<span class="number">0xFF</span>);  <span class="comment">// SYNC1</span>
+SPI.transfer(<span class="number">0xFE</span>);  <span class="comment">// SYNC2</span>
+SPI.transfer(<span class="number">0x01</span>);  <span class="comment">// Slave ID</span>
+SPI.transfer(<span class="number">0x02</span>);  <span class="comment">// CMD_READ_SENSOR</span>
+SPI.transfer(<span class="number">0x03</span>);  <span class="comment">// Checksum: 0x01 ^ 0x02</span>
+                    </div>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>Step 8: Slave Send ADC Response</h3>
+                    <p>Slave mengirim 16-bit ADC value (832 = 0x0340)</p>
+                    <div class="code-block">
+<span class="keyword">uint16_t</span> adc = <span class="number">832</span>;  <span class="comment">// 0x0340</span>
+<span class="keyword">uint8_t</span> high = <span class="number">0x03</span>;
+<span class="keyword">uint8_t</span> low = <span class="number">0x40</span>;
+
+responseBuffer[<span class="number">0</span>] = <span class="number">0xFF</span>;              <span class="comment">// SYNC1</span>
+responseBuffer[<span class="number">1</span>] = <span class="number">0xFE</span>;              <span class="comment">// SYNC2</span>
+responseBuffer[<span class="number">2</span>] = <span class="number">0x01</span>;              <span class="comment">// Slave ID</span>
+responseBuffer[<span class="number">3</span>] = high;              <span class="comment">// 0x03</span>
+responseBuffer[<span class="number">4</span>] = low;               <span class="comment">// 0x40</span>
+responseBuffer[<span class="number">5</span>] = <span class="number">0x01</span> ^ high ^ low;  <span class="comment">// Checksum</span>
+                    </div>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>Step 9: Master Parse 16-bit Data</h3>
+                    <p>Master reconstruct 16-bit value dari HIGH dan LOW byte</p>
+                    <div class="code-block">
+<span class="keyword">uint8_t</span> analogH = response[i+<span class="number">3</span>];  <span class="comment">// 0x03</span>
+<span class="keyword">uint8_t</span> analogL = response[i+<span class="number">4</span>];  <span class="comment">// 0x40</span>
+
+<span class="comment">// Combine to 16-bit</span>
+<span class="keyword">uint16_t</span> analogValue = (analogH &lt;&lt; <span class="number">8</span>) | analogL;
+<span class="comment">// Result: 0x0340 = 832</span>
+                    </div>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>Step 10: Save to EEPROM</h3>
+                    <p>Master menyimpan data ke EEPROM untuk backup</p>
+                    <div class="code-block">
+<span class="comment">// EEPROM Address Map</span>
+<span class="comment">// Slave 1: 0x00-0x03</span>
+<span class="comment">// Slave 2: 0x04-0x07</span>
+<span class="comment">// Slave 3: 0x08-0x0B</span>
+
+EEPROM.update(<span class="number">0x00</span>, pb2);         <span class="comment">// PB2 = 1</span>
+EEPROM.update(<span class="number">0x01</span>, analogH);     <span class="comment">// ADC High = 0x03</span>
+EEPROM.update(<span class="number">0x02</span>, analogL);     <span class="comment">// ADC Low = 0x40</span>
+EEPROM.update(<span class="number">0x03</span>, counter);     <span class="comment">// Counter = 5</span>
+                    </div>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>Step 11: Display to PC</h3>
+                    <p>Master mengirim hasil ke PC via Serial</p>
+                    <div class="code-block">
+<span class="comment">// Display format based on request (Y=3: PB2+ADC)</span>
+Serial.print(<span class="string">">>> "</span>);
+Serial.print(pb2);        <span class="comment">// 1</span>
+Serial.print(<span class="string">" "</span>);
+Serial.println(analog);   <span class="comment">// 832</span>
+
+<span class="comment">// Output: >>> 1 832</span>
+                    </div>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>Step 12: Continuous Monitoring</h3>
+                    <p>Loop repeat setiap 10ms hingga PC kirim "STOP"</p>
+                    <div class="code-block">
+<span class="keyword">if</span> (millis() - lastPCDisplay >= <span class="number">10</span>) {
+    fetchAndDisplay();  <span class="comment">// Repeat steps 3-11</span>
+}
+
+<span class="comment">// Output continuous:</span>
+<span class="comment">// >>> 1 832</span>
+<span class="comment">// >>> 1 832</span>
+<span class="comment">// >>> 1 833</span>
+<span class="comment">// ... (100x per second)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 6: Parsing Details -->
+        <div class="slide">
+            <h1>🔍 Detail Parsing & Validation</h1>
+            
+            <h2>Master: Sync Pattern Recognition</h2>
+            <div class="protocol-box">
+<span class="comment">// Buffer 15 bytes dari Slave</span>
+[<span class="number">0x00</span>] [<span class="number">0x00</span>] [<span class="number">0xFF</span>] [<span class="number">0xFE</span>] [<span class="number">0x01</span>] [<span class="number">0x03</span>] [<span class="number">0x40</span>] [<span class="number">0x42</span>] [<span class="number">0x00</span>] ...
+                    ↑     ↑     ↑     ↑     ↑     ↑
+                  SYNC1 SYNC2  ID   HIGH   LOW   CS
+            </div>
+
+            <div class="code-block">
+<span class="comment">// Scan buffer untuk pattern [0xFF][0xFE][SlaveID]</span>
+<span class="keyword">for</span> (<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; <span class="number">10</span>; i++) {
+    <span class="keyword">if</span> (response[i] == <span class="number">0xFF</span> && 
+        response[i+<span class="number">1</span>] == <span class="number">0xFE</span> && 
+        response[i+<span class="number">2</span>] == slaveID) {
+        
+        <span class="comment">// Found valid sync pattern!</span>
+        <span class="keyword">uint8_t</span> dataH = response[i+<span class="number">3</span>];
+        <span class="keyword">uint8_t</span> dataL = response[i+<span class="number">4</span>];
+        <span class="keyword">uint8_t</span> checksum = response[i+<span class="number">5</span>];
+        
+        <span class="comment">// Validate checksum</span>
+        <span class="keyword">uint8_t</span> expected = slaveID ^ dataH ^ dataL;
+        <span class="keyword">if</span> (checksum == expected) {
+            <span class="comment">// ✓ Valid data!</span>
+            <span class="keyword">return</span> (dataH &lt;&lt; <span class="number">8</span>) | dataL;
+        }
+    }
+}
+<span class="keyword">return</span> <span class="number">0xFFFF</span>;  <span class="comment">// Error: pattern not found</span>
+            </div>
+
+            <h2>Slave: State Machine Processing</h2>
+            <div class="state-machine">
+                <div class="state">WAIT_SYNC1<br>Cari 0xFF</div>
+                <div class="state">WAIT_SYNC2<br>Cari 0xFE</div>
+                <div class="state">WAIT_ID<br>Match ID</div>
+                <div class="state">WAIT_CMD<br>Save CMD</div>
+                <div class="state">WAIT_CHECKSUM<br>Validate</div>
+                <div class="state">SEND_RESPONSE<br>Kirim Data</div>
+            </div>
+
+            <div class="code-block">
+<span class="keyword">ISR</span>(SPI_STC_vect) {
+    <span class="keyword">uint8_t</span> received = SPDR;  <span class="comment">// Baca byte dari Master</span>
+    
+    <span class="keyword">switch</span> (currentState) {
+        <span class="keyword">case</span> WAIT_SYNC1:
+            <span class="keyword">if</span> (received == <span class="number">0xFF</span>) {
+                currentState = WAIT_SYNC2;
+            }
+            <span class="keyword">break</span>;
+            
+        <span class="keyword">case</span> WAIT_SYNC2:
+            <span class="keyword">if</span> (received == <span class="number">0xFE</span>) {
+                currentState = WAIT_ID;
+            } <span class="keyword">else</span> {
+                currentState = WAIT_SYNC1;  <span class="comment">// Reset</span>
+            }
+            <span class="keyword">break</span>;
+            
+        <span class="keyword">case</span> WAIT_ID:
+            <span class="keyword">if</span> (received == SLAVE_ID) {
+                currentState = WAIT_CMD;
+            } <span class="keyword">else</span> {
+                currentState = WAIT_SYNC1;  <span class="comment">// Bukan untuk saya</span>
+            }
+            <span class="keyword">break</span>;
+            
+        <span class="keyword">case</span> WAIT_CMD:
+            receivedCMD = received;
+            currentState = WAIT_CHECKSUM;
+            <span class="keyword">break</span>;
+            
+        <span class="keyword">case</span> WAIT_CHECKSUM:
+            <span class="keyword">uint8_t</span> expected = SLAVE_ID ^ receivedCMD;
+            <span class="keyword">if</span> (received == expected) {
+                prepareResponse(receivedCMD);  <span class="comment">// ✓ Valid!</span>
+                currentState = SEND_RESPONSE;
+            } <span class="keyword">else</span> {
+                currentState = WAIT_SYNC1;  <span class="comment">// ✗ Checksum error</span>
+            }
+            <span class="keyword">break</span>;
+            
+        <span class="keyword">case</span> SEND_RESPONSE:
+            <span class="comment">// Load next byte to SPDR</span>
+            SPDR = responseBuffer[responseIndex++];
+            <span class="keyword">if</span> (responseIndex >= responseLength) {
+                currentState = WAIT_SYNC1;  <span class="comment">// Done</span>
+            }
+            <span class="keyword">break</span>;
+    }
+}
+            </div>
+        </div>
+
+        <!-- Slide 7: Checksum Calculation -->
+        <div class="slide">
+            <h1>🔐 Checksum Validation</h1>
+            
+            <h2>XOR Checksum Algorithm</h2>
+            <div class="highlight">
+                <h3>Prinsip: XOR semua data byte</h3>
+                <p>Simple, fast, dan dapat detect single-bit errors</p>
+            </div>
+
+            <h2>Request Checksum (Master)</h2>
+            <div class="code-block">
+<span class="keyword">uint8_t</span> slaveID = <span class="number">0x01</span>;
+<span class="keyword">uint8_t</span> command = <span class="number">0x02</span>;
+
+<span class="comment">// Calculate checksum</span>
+<span class="keyword">uint8_t</span> checksum = slaveID ^ command;
+<span class="comment">// Result: 0x01 ^ 0x02 = 0x03</span>
+
+<span class="comment">// Send packet</span>
+SPI.transfer(<span class="number">0xFF</span>);        <span class="comment">// SYNC1</span>
+SPI.transfer(<span class="number">0xFE</span>);        <span class="comment">// SYNC2</span>
+SPI.transfer(slaveID);     <span class="comment">// 0x01</span>
+SPI.transfer(command);     <span class="comment">// 0x02</span>
+SPI.transfer(checksum);    <span class="comment">// 0x03</span>
+            </div>
+
+            <h2>Response Checksum - Single Byte (Slave)</h2>
+            <div class="code-block">
+<span class="keyword">uint8_t</span> slaveID = <span class="number">0x01</span>;
+<span class="keyword">uint8_t</span> data = <span class="number">0x01</span>;      <span class="comment">// PB2 value</span>
+
+<span class="comment">// Calculate checksum</span>
+<span class="keyword">uint8_t</span> checksum = slaveID ^ data;
+<span class="comment">// Result: 0x01 ^ 0x01 = 0x00</span>
+
+<span class="comment">// Prepare response</span>
+responseBuffer[<span class="number">0</span>] = <span class="number">0xFF</span>;        <span class="comment">// SYNC1</span>
+responseBuffer[<span class="number">1</span>] = <span class="number">0xFE</span>;        <span class="comment">// SYNC2</span>
+responseBuffer[<span class="number">2</span>] = slaveID;     <span class="comment">// 0x01</span>
+responseBuffer[<span class="number">3</span>] = data;        <span class="comment">// 0x01</span>
+responseBuffer[<span class="number">4</span>] = checksum;    <span class="comment">// 0x00</span>
+            </div>
+
+            <h2>Response Checksum - Multi Byte (Slave)</h2>
+            <div class="code-block">
+<span class="keyword">uint16_t</span> adc = <span class="number">832</span>;          <span class="comment">// 0x0340</span>
+<span class="keyword">uint8_t</span> slaveID = <span class="number">0x01</span>;
+<span class="keyword">uint8_t</span> adcHigh = <span class="number">0x03</span>;
+<span class="keyword">uint8_t</span> adcLow = <span class="number">0x40</span>;
+
+<span class="comment">// Calculate checksum: XOR all data bytes</span>
+<span class="keyword">uint8_t</span> checksum = slaveID ^ adcHigh ^ adcLow;
+<span class="comment">// Result: 0x01 ^ 0x03 ^ 0x40 = 0x42</span>
+
+<span class="comment">// Prepare response</span>
+responseBuffer[<span class="number">0</span>] = <span class="number">0xFF</span>;        <span class="comment">// SYNC1</span>
+responseBuffer[<span class="number">1</span>] = <span class="number">0xFE</span>;        <span class="comment">// SYNC2</span>
+responseBuffer[<span class="number">2</span>] = slaveID;     <span class="comment">// 0x01</span>
+responseBuffer[<span class="number">3</span>] = adcHigh;     <span class="comment">// 0x03</span>
+responseBuffer[<span class="number">4</span>] = adcLow;      <span class="comment">// 0x40</span>
+responseBuffer[<span class="number">5</span>] = checksum;    <span class="comment">// 0x42</span>
+            </div>
+
+            <h2>Checksum Verification (Master)</h2>
+            <div class="code-block">
+<span class="comment">// Received from slave:</span>
+<span class="keyword">uint8_t</span> slaveID = response[i+<span class="number">2</span>];      <span class="comment">// 0x01</span>
+<span class="keyword">uint8_t</span> adcHigh = response[i+<span class="number">3</span>];      <span class="comment">// 0x03</span>
+<span class="keyword">uint8_t</span> adcLow = response[i+<span class="number">4</span>];       <span class="comment">// 0x40</span>
+<span class="keyword">uint8_t</span> receivedCS = response[i+<span class="number">5</span>];   <span class="comment">// 0x42</span>
+
+<span class="comment">// Calculate expected checksum</span>
+<span class="keyword">uint8_t</span> expectedCS = slaveID ^ adcHigh ^ adcLow;
+<span class="comment">// Result: 0x01 ^ 0x03 ^ 0x40 = 0x42</span>
+
+<span class="comment">// Validate</span>
+<span class="keyword">if</span> (receivedCS == expectedCS) {
+    <span class="comment">// ✓ Data valid!</span>
+    <span class="keyword">uint16_t</span> adc = (adcHigh &lt;&lt; <span class="number">8</span>) | adcLow;
+    <span class="keyword">return</span> adc;  <span class="comment">// 832</span>
+} <span class="keyword">else</span> {
+    <span class="comment">// ✗ Corruption detected!</span>
+    <span class="keyword">return</span> <span class="number">0xFFFF</span>;  <span class="comment">// Error</span>
+}
+            </div>
+        </div>
+
+        <!-- Slide 8: Timing & Performance -->
+        <div class="slide">
+            <h1>⚡ Timing & Performance</h1>
+            
+            <h2>System Performance Metrics</h2>
+            <div style="text-align: center; margin: 30px 0;">
+                <div class="metric-box">
+                    <span class="metric-value">2 MHz</span>
+                    SPI Clock Speed
+                </div>
+                <div class="metric-box">
+                    <span class="metric-value">100 Hz</span>
+                    Update Rate
+                </div>
+                <div class="metric-box">
+                    <span class="metric-value">~2 ms</span>
+                    Command Latency
+                </div>
+                <div class="metric-box">
+                    <span class="metric-value">10 ms</span>
+                    Display Interval
+                </div>
+            </div>
+
+            <h2>Communication Timing Diagram</h2>
+            <div class="timing-diagram">
+<span class="info">Time (ms)</span>  <span class="info">Event</span>
+────────────────────────────────────────────────────
+<span class="number">0.000</span>      PC sends <span class="string">"13"</span>
+<span class="number">0.001</span>      Master parses command
+<span class="number">0.002</span>      SS_SLAVE1 = LOW
+<span class="number">0.003</span>      Send SYNC1 (0xFF)
+<span class="number">0.004</span>      Send SYNC2 (0xFE)
+<span class="number">0.005</span>      Send SlaveID (0x01)
+<span class="number">0.006</span>      Send CMD (0x01)
+<span class="number">0.007</span>      Send Checksum
+<span class="number">0.008</span>      Wait for slave...
+<span class="number">0.010</span>      Slave ISR processes
+<span class="number">0.012</span>      Slave prepares response
+<span class="number">0.015</span>      Master reads 15 bytes
+<span class="number">0.020</span>      SS_SLAVE1 = HIGH
+<span class="number">0.021</span>      Parse response <span class="success">✓</span>
+<span class="number">0.022</span>      Save to EEPROM
+<span class="number">0.025</span>      Display to Serial
+────────────────────────────────────────────────────
+<span class="success">Total: ~25ms per full slave poll</span>
+            </div>
+
+            <h2>SPI Transfer Details</h2>
+            <table>
+                <tr>
+                    <th>Parameter</th>
+                    <th>Value</th>
+                    <th>Notes</th>
+                </tr>
+                <tr>
+                    <td>Clock Frequency</td>
+                    <td>2 MHz</td>
+                    <td>16 MHz / 8 = 2 MHz</td>
+                </tr>
+                <tr>
+                    <td>Bit Duration</td>
+                    <td>0.5 μs</td>
+                    <td>1 / 2MHz</td>
+                </tr>
+                <tr>
+                    <td>Byte Duration</td>
+                    <td>4 μs</td>
+                    <td>8 bits × 0.5μs</td>
+                </tr>
+                <tr>
+                    <td>Request Packet (5 bytes)</td>
+                    <td>20 μs</td>
+                    <td>5 × 4μs</td>
+                </tr>
+                <tr>
+                    <td>Response Packet (6 bytes)</td>
+                    <td>24 μs</td>
+                    <td>6 × 4μs</td>
+                </tr>
+                <tr>
+                    <td>Inter-byte Delay</td>
+                    <td>10-20 μs</td>
+                    <td>Processing time</td>
+                </tr>
+            </table>
+
+            <h2>Performance Optimization</h2>
+            <div class="protocol-box">
+<span class="comment">// Original (slow)</span>
+SPI.setClockDivider(SPI_CLOCK_DIV128);  <span class="comment">// 125 kHz</span>
+<span class="keyword">delayMicroseconds</span>(<span class="number">100</span>);
+
+<span class="comment">// Optimized (fast)</span>
+SPI.setClockDivider(SPI_CLOCK_DIV8);    <span class="comment">// 2 MHz (16x faster!)</span>
+<span class="keyword">delayMicroseconds</span>(<span class="number">10</span>);             <span class="comment">// 10x faster!</span>
+
+<span class="comment">// Result:</span>
+<span class="comment">// - Display rate: 2 Hz → 100 Hz (50x faster)</span>
+<span class="comment">// - Command latency: 50ms → 2ms (25x faster)</span>
+            </div>
+        </div>
+
+        <!-- Slide 9: EEPROM Storage -->
+        <div class="slide">
+            <h1>💾 EEPROM Storage System</h1>
+            
+            <h2>Memory Map</h2>
+            <table>
+                <tr>
+                    <th>Address</th>
+                    <th>Slave</th>
+                    <th>Data</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td>0x00</td>
+                    <td rowspan="4">Slave 1</td>
+                    <td>PB2</td>
+                    <td>Button state (0 or 1)</td>
+                </tr>
+                <tr>
+                    <td>0x01</td>
+                    <td>ADC_H</td>
+                    <td>ADC upper byte</td>
+                </tr>
+                <tr>
+                    <td>0x02</td>
+                    <td>ADC_L</td>
+                    <td>ADC lower byte</td>
+                </tr>
+                <tr>
+                    <td>0x03</td>
+                    <td>Counter</td>
+                    <td>Interrupt counter</td>
+                </tr>
+                <tr>
+                    <td>0x04</td>
+                    <td rowspan="4">Slave 2</td>
+                    <td>PB2</td>
+                    <td>Button state</td>
+                </tr>
+                <tr>
+                    <td>0x05</td>
+                    <td>ADC_H</td>
+                    <td>ADC upper byte</td>
+                </tr>
+                <tr>
+                    <td>0x06</td>
+                    <td>ADC_L</td>
+                    <td>ADC lower byte</td>
+                </tr>
+                <tr>
+                    <td>0x07</td>
+                    <td>Counter</td>
+                    <td>Interrupt counter</td>
+                </tr>
+                <tr>
+                    <td>0x08</td>
+                    <td rowspan="4">Slave 3</td>
+                    <td>PB2</td>
+                    <td>Button state</td>
+                </tr>
+                <tr>
+                    <td>0x09</td>
+                    <td>ADC_H</td>
+                    <td>ADC upper byte</td>
+                </tr>
+                <tr>
+                    <td>0x0A</td>
+                    <td>ADC_L</td>
+                    <td>ADC lower byte</td>
+                </tr>
+                <tr>
+                    <td>0x0B</td>
+                    <td>Counter</td>
+                    <td>Interrupt counter</td>
+                </tr>
+            </table>
+
+            <h2>Save to EEPROM</h2>
+            <div class="code-block">
+<span class="keyword">void</span> <span class="keyword">saveSlaveToEEPROM</span>(<span class="keyword">int</span> base, SlaveData &data) {
+    <span class="comment">// Use EEPROM.update() - only write if value changed</span>
+    <span class="comment">// This extends EEPROM lifetime (100k write cycles)</span>
+    
+    EEPROM.update(base + <span class="number">0</span>, data.pb2);
+    EEPROM.update(base + <span class="number">1</span>, (data.analog >> <span class="number">8</span>) & <span class="number">0xFF</span>);  <span class="comment">// High byte</span>
+    EEPROM.update(base + <span class="number">2</span>, data.analog & <span class="number">0xFF</span>);         <span class="comment">// Low byte</span>
+    EEPROM.update(base + <span class="number">3</span>, data.counter);
+}
+
+<span class="comment">// Example: Save Slave 1 data</span>
+saveSlaveToEEPROM(EEPROM_SLAVE1_BASE, slave1Data);
+<span class="comment">// Saved to addresses: 0x00, 0x01, 0x02, 0x03</span>
+            </div>
+
+            <h2>Load from EEPROM</h2>
+            <div class="code-block">
+<span class="keyword">SlaveData</span> <span class="keyword">loadSlaveFromEEPROM</span>(<span class="keyword">int</span> base) {
+    SlaveData data;
+    
+    <span class="comment">// Read 4 bytes</span>
+    data.pb2 = EEPROM.read(base + <span class="number">0</span>);
+    
+    <span class="comment">// Reconstruct 16-bit ADC value</span>
+    <span class="keyword">uint8_t</span> high = EEPROM.read(base + <span class="number">1</span>);
+    <span class="keyword">uint8_t</span> low = EEPROM.read(base + <span class="number">2</span>);
+    data.analog = (high &lt;&lt; <span class="number">8</span>) | low;
+    
+    data.counter = EEPROM.read(base + <span class="number">3</span>);
+    data.valid = <span class="keyword">true</span>;
+    
+    <span class="keyword">return</span> data;
+}
+
+<span class="comment">// Example: Load Slave 2 data</span>
+SlaveData s2 = loadSlaveFromEEPROM(EEPROM_SLAVE2_BASE);
+<span class="comment">// Loaded from addresses: 0x04, 0x05, 0x06, 0x07</span>
+            </div>
+
+            <h2>Auto-Save Mechanism</h2>
+            <div class="protocol-box">
+Setiap kali Master berhasil polling Slave:
+1. Validate checksum
+2. Save data to struct (slave1Data, slave2Data, slave3Data)
+3. <strong>Auto-save to EEPROM</strong>
+4. Display on LCD
+
+PC Request hanya membaca dari EEPROM (tidak poll ulang ke Slave)
+→ Response sangat cepat (tidak ada SPI communication delay)
+            </div>
+        </div>
+
+        <!-- Slide 10: LCD Display -->
+        <div class="slide">
+            <h1>🖥️ LCD Display System</h1>
+            
+            <h2>LCD Configuration</h2>
+            <div class="connection-diagram">
+                <h3>16x2 LCD Connection</h3>
+                <div class="pin-connection">
+                    <div class="pin-master">RS (47)</div>
+                    <div class="pin-arrow">────→</div>
+                    <div class="pin-slave">Register Select</div>
+                </div>
+                <div class="pin-connection">
+                    <div class="pin-master">EN (45)</div>
+                    <div class="pin-arrow">────→</div>
+                    <div class="pin-slave">Enable</div>
+                </div>
+                <div class="pin-connection">
+                    <div class="pin-master">D4-D7</div>
+                    <div class="pin-arrow">────→</div>
+                    <div class="pin-slave">37, 39, 43, 41</div>
+                </div>
+            </div>
+
+            <h2>Display Format</h2>
+            <div class="protocol-box">
+┌────────────────┐
+│S1 P:1 A:832    │ ← Line 1: Slave ID, PB2, ADC
+│   C:5 OK       │ ← Line 2: Counter, Status
+└────────────────┘
+
+Legend:
+- S1/S2/S3: Slave number
+- P: PB2 button state
+- A: Analog sensor value (0-1023)
+- C: Interrupt counter
+- OK: Communication success
+- ER: Communication error
+            </div>
+
+            <h2>LCD Update Code</h2>
+            <div class="code-block">
+<span class="keyword">void</span> <span class="keyword">updateLCD</span>() {
+    lcd.clear();
+    
+    <span class="keyword">switch</span> (currentLCDPage) {
+        <span class="keyword">case</span> <span class="number">0</span>:  <span class="comment">// Slave 1</span>
+            lcd.setCursor(<span class="number">0</span>, <span class="number">0</span>);
+            lcd.print(<span class="string">"S1 P:"</span>);
+            lcd.print(slave1Data.pb2);
+            lcd.print(<span class="string">" A:"</span>);
+            lcd.print(slave1Data.analog);
+            
+            lcd.setCursor(<span class="number">0</span>, <span class="number">1</span>);
+            lcd.print(<span class="string">"   C:"</span>);
+            lcd.print(slave1Data.counter);
+            lcd.print(slave1Data.valid ? <span class="string">" OK"</span> : <span class="string">" ER"</span>);
+            <span class="keyword">break</span>;
+            
+        <span class="keyword">case</span> <span class="number">1</span>:  <span class="comment">// Slave 2</span>
+            <span class="comment">// Same format...</span>
+            <span class="keyword">break</span>;
+            
+        <span class="keyword">case</span> <span class="number">2</span>:  <span class="comment">// Slave 3</span>
+            <span class="comment">// Same format...</span>
+            <span class="keyword">break</span>;
+    }
+    
+    <span class="comment">// Rotate to next page</span>
+    currentLCDPage = (currentLCDPage + <span class="number">1</span>) % <span class="number">3</span>;
+}
+
+<span class="comment">// Called every 500ms</span>
+<span class="keyword">if</span> (millis() - lastLCDUpdate >= <span class="number">500</span>) {
+    lastLCDUpdate = millis();
+    updateLCD();
+}
+            </div>
+        </div>
+
+        <!-- Slide 11: Error Handling -->
+        <div class="slide">
+            <h1>🛡️ Error Handling & Recovery</h1>
+            
+            <h2>Error Detection Mechanisms</h2>
+            <table>
+                <tr>
+                    <th>Error Type</th>
+                    <th>Detection Method</th>
+                    <th>Recovery Action</th>
+                </tr>
+                <tr>
+                    <td>Checksum Mismatch</td>
+                    <td>XOR validation fails</td>
+                    <td>Return error value (0xFF/0xFFFF)</td>
+                </tr>
+                <tr>
+                    <td>Sync Pattern Not Found</td>
+                    <td>15-byte buffer scan fails</td>
+                    <td>Return error value</td>
+                </tr>
+                <tr>
+                    <td>Wrong Slave ID</td>
+                    <td>ID doesn't match</td>
+                    <td>Slave ignores packet, resets state</td>
+                </tr>
+                <tr>
+                    <td>Slave Not Responding</td>
+                    <td>No valid response in buffer</td>
+                    <td>Mark slave as invalid, show "ER" on LCD</td>
+                </tr>
+                <tr>
+                    <td>SS Pin Deselected</td>
+                    <td>SS goes HIGH mid-transfer</td>
+                    <td>Slave resets state machine</td>
+                </tr>
+            </table>
+
+            <h2>Master Error Handling</h2>
+            <div class="code-block">
+<span class="keyword">bool</span> <span class="keyword">quickPollSlave</span>(<span class="keyword">uint8_t</span> slaveID, <span class="keyword">uint8_t</span> ssPin, 
+                      SlaveData &data, <span class="keyword">int</span> eepromBase) {
+    <span class="keyword">bool</span> success = <span class="keyword">true</span>;
+    
+    <span class="comment">// Read PB2</span>
+    <span class="keyword">uint8_t</span> pb2 = readValue(slaveID, ssPin, CMD_READ_VALUE);
+    <span class="keyword">if</span> (pb2 == <span class="number">0xFF</span>) {
+        success = <span class="keyword">false</span>;  <span class="comment">// ✗ Error detected</span>
+    }
+    
+    <span class="comment">// Read Analog</span>
+    <span class="keyword">uint16_t</span> analog = readSensor(slaveID, ssPin, CMD_READ_SENSOR);
+    <span class="keyword">if</span> (analog == <span class="number">0xFFFF</span>) {
+        success = <span class="keyword">false</span>;  <span class="comment">// ✗ Error detected</span>
+    }
+    
+    <span class="comment">// Read Counter</span>
+    <span class="keyword">uint8_t</span> counter = readValue(slaveID, ssPin, CMD_READ_COUNTER);
+    <span class="keyword">if</span> (counter == <span class="number">0xFF</span>) {
+        success = <span class="keyword">false</span>;  <span class="comment">// ✗ Error detected</span>
+    }
+    
+    <span class="keyword">if</span> (success) {
+        <span class="comment">// ✓ All commands successful</span>
+        data.pb2 = pb2;
+        data.analog = analog;
+        data.counter = counter;
+        data.valid = <span class="keyword">true</span>;
+        saveSlaveToEEPROM(eepromBase, data);
+        <span class="keyword">return</span> <span class="keyword">true</span>;
+    } <span class="keyword">else</span> {
+        <span class="comment">// ✗ At least one command failed</span>
+        data.valid = <span class="keyword">false</span>;
+        <span class="keyword">return</span> <span class="keyword">false</span>;
+    }
+}
+            </div>
+
+            <h2>Slave Error Handling</h2>
+            <div class="code-block">
+<span class="keyword">ISR</span>(SPI_STC_vect) {
+    <span class="comment">// Check if SS pin is HIGH (deselected)</span>
+    <span class="keyword">if</span> (digitalRead(SS_PIN) == HIGH) {
+        currentState = WAIT_SYNC1;  <span class="comment">// Reset state machine</span>
+        responseReady = <span class="keyword">false</span>;
+        responseIndex = <span class="number">0</span>;
+        SPDR = <span class="number">0x00</span>;
+        <span class="keyword">return</span>;
+    }
+    
+    <span class="keyword">uint8_t</span> received = SPDR;
+    
+    <span class="comment">// State machine processing...</span>
+    
+    <span class="comment">// If checksum invalid, reset</span>
+    <span class="keyword">if</span> (checksum != expected) {
+        currentState = WAIT_SYNC1;  <span class="comment">// Reset and wait for next command</span>
+        SPDR = <span class="number">0x00</span>;
+        <span class="keyword">return</span>;
+    }
+    
+    <span class="comment">// Continue normal processing...</span>
+}
+            </div>
+
+            <h2>Error Status Display</h2>
+            <div class="protocol-box">
+<span class="success">✓ Communication OK:</span>
+LCD: "S1 P:1 A:832 C:5 OK"
+Serial: ">>> 1 832 5"
+
+<span class="error">✗ Communication Error:</span>
+LCD: "S1 P:1 A:832 C:5 ER"
+Serial: (no output atau last valid data)
+            </div>
+        </div>
+
+        <!-- Slide 12: Complete Example -->
+        <div class="slide">
+            <h1>📋 Complete Usage Example</h1>
+            
+            <h2>Scenario: Monitor Slave 1 - All Data</h2>
+            
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <h3>1. PC sends request</h3>
+                    <div class="code-block">
+PC Terminal: <span class="string">17</span>  <span class="comment">// Slave 1, All data (Y=7)</span>
+                    </div>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>2. Master confirms</h3>
+                    <div class="code-block">
+[S1 D7 - STOP to stop]
+                    </div>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>3. Master polls Slave 1 (every 10ms)</h3>
+                    <div class="timing-diagram">
+<span class="comment">// Send CMD 0x01 (Read PB2)</span>
+Master → Slave: [<span class="number">0xFF</span> <span class="number">0xFE</span> <span class="number">0x01</span> <span class="number">0x01</span> <span class="number">0x00</span>]
+Slave → Master: [<span class="number">0xFF</span> <span class="number">0xFE</span> <span class="number">0x01</span> <span class="number">0x01</span> <span class="number">0x00</span>]
+<span class="success">✓ PB2 = 1</span>
+
+<span class="comment">// Send CMD 0x02 (Read ADC)</span>
+Master → Slave: [<span class="number">0xFF</span> <span class="number">0xFE</span> <span class="number">0x01</span> <span class="number">0x02</span> <span class="number">0x03</span>]
+Slave → Master: [<span class="number">0xFF</span> <span class="number">0xFE</span> <span class="number">0x01</span> <span class="number">0x03</span> <span class="number">0x40</span> <span class="number">0x42</span>]
+<span class="success">✓ ADC = 832 (0x0340)</span>
+
+<span class="comment">// Send CMD 0x03 (Read Counter)</span>
+Master → Slave: [<span class="number">0xFF</span> <span class="number">0xFE</span> <span class="number">0x01</span> <span class="number">0x03</span> <span class="number">0x02</span>]
+Slave → Master: [<span class="number">0xFF</span> <span class="number">0xFE</span> <span class="number">0x01</span> <span class="number">0x05</span> <span class="number">0x04</span>]
+<span class="success">✓ Counter = 5</span>
+                    </div>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>4. Save to EEPROM</h3>
+                    <div class="code-block">
+EEPROM[<span class="number">0x00</span>] = <span class="number">0x01</span>  <span class="comment">// PB2</span>
+EEPROM[<span class="number">0x01</span>] = <span class="number">0x03</span>  <span class="comment">// ADC High</span>
+EEPROM[<span class="number">0x02</span>] = <span class="number">0x40</span>  <span class="comment">// ADC Low</span>
+EEPROM[<span class="number">0x03</span>] = <span class="number">0x05</span>  <span class="comment">// Counter</span>
+                    </div>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>5. Display to PC (continuous)</h3>
+                    <div class="code-block">
+>>> <span class="number">1</span> <span class="number">832</span> <span class="number">5</span>
+>>> <span class="number">1</span> <span class="number">832</span> <span class="number">5</span>
+>>> <span class="number">1</span> <span class="number">831</span> <span class="number">5</span>
+>>> <span class="number">1</span> <span class="number">832</span> <span class="number">6</span>
+>>> <span class="number">0</span> <span class="number">833</span> <span class="number">6</span>
+<span class="comment">// Updates 100x per second!</span>
+                    </div>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>6. PC stops display</h3>
+                    <div class="code-block">
+PC Terminal: <span class="string">STOP</span>
+
+Master Response:
+[Display stopped]
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 13: Advantages -->
+        <div class="slide">
+            <h1>🌟 Keunggulan Sistem</h1>
+            
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🚀</div>
+                    <h3>High Performance</h3>
+                    <ul style="text-align: left; margin-top: 15px;">
+                        <li>2 MHz SPI clock</li>
+                        <li>100 updates/sec</li>
+                        <li>Non-blocking architecture</li>
+                        <li>~2ms latency</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">🔒</div>
+                    <h3>Reliable</h3>
+                    <ul style="text-align: left; margin-top: 15px;">
+                        <li>Checksum validation</li>
+                        <li>Sync pattern detection</li>
+                        <li>Error recovery</li>
+                        <li>State machine protocol</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">💾</div>
+                    <h3>Data Persistence</h3>
+                    <ul style="text-align: left; margin-top: 15px;">
+                        <li>Auto EEPROM backup</li>
+                        <li>Fast PC response</li>
+                        <li>No data loss</li>
+                        <li>100k write cycles</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">📡</div>
+                    <h3>Scalable</h3>
+                    <ul style="text-align: left; margin-top: 15px;">
+                        <li>Support 3 slaves</li>
+                        <li>Easy to add slaves</li>
+                        <li>Custom commands</li>
+                        <li>Flexible protocol</li>
+                    </ul>
+                </div>
+            </div>
+
+            <h2>Technical Highlights</h2>
+            <table>
+                <tr>
+                    <th>Feature</th>
+                    <th>Implementation</th>
+                    <th>Benefit</th>
+                </tr>
+                <tr>
+                    <td>Custom Protocol</td>
+                    <td>SYNC + ID + CMD + CHECKSUM</td>
+                    <td>Robust multi-slave communication</td>
+                </tr>
+                <tr>
+                    <td>Interrupt-Driven Slave</td>
+                    <td>SPI ISR + State Machine</td>
+                    <td>No blocking, instant response</td>
+                </tr>
+                <tr>
+                    <td>PC Interface</td>
+                    <td>Serial 115200 baud</td>
+                    <td>Real-time monitoring & control</td>
+                </tr>
+                <tr>
+                    <td>LCD Display</td>
+                    <td>16x2 rotating display</td>
+                    <td>Local visualization</td>
+                </tr>
+                <tr>
+                    <td>EEPROM Caching</td>
+                    <td>Auto-save on poll</td>
+                    <td>Fast PC response, data backup</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- Slide 14: Summary -->
+        <div class="slide">
+            <h1>📌 Summary</h1>
+            
+            <div class="highlight">
+                <h2>Multi-Slave SPI Communication System</h2>
+                <p style="font-size: 1.1em; line-height: 1.8;">
+                    Sistem komunikasi SPI yang menghubungkan <strong>1 Master</strong> dengan <strong>3 Slave</strong> 
+                    menggunakan <strong>custom protocol</strong> dengan sync pattern dan checksum validation.
+                    Master dapat berkomunikasi dengan PC via Serial untuk <strong>real-time monitoring</strong> 
+                    dengan kecepatan hingga <strong>100 updates/detik</strong>.
+                </p>
+            </div>
+
+            <h2>Key Components</h2>
+            <div class="state-machine">
+                <div class="state">
+                    <h3>Master</h3>
+                    Arduino Mega<br>
+                    SPI Master<br>
+                    LCD Controller<br>
+                    EEPROM Storage
+                </div>
+                <div class="state">
+                    <h3>Slaves (3x)</h3>
+                    Arduino Uno/Nano<br>
+                    SPI Slave<br>
+                    ISR Handler<br>
+                    State Machine
+                </div>
+                <div class="state">
+                    <h3>PC Interface</h3>
+                    Serial 115200<br>
+                    Command: XY<br>
+                    Display: >>> data<br>
+                    Control: STOP
+                </div>
+            </div>
+
+            <h2>Data Flow: PC → Master → Slave → EEPROM → Display</h2>
+            <div class="protocol-box">
+1. PC sends command "17" (Slave 1, All data)
+2. Master parses: slaveID=1, dataSelect=7
+3. Master polls Slave 1 via SPI:
+   - CMD 0x01 → PB2 value
+   - CMD 0x02 → ADC 16-bit value
+   - CMD 0x03 → Counter value
+4. Slave responds with validated data (checksum OK)
+5. Master saves to EEPROM (addresses 0x00-0x03)
+6. Master displays to PC: ">>> 1 832 5"
+7. Repeat every 10ms (100 Hz update rate)
+8. PC sends "STOP" to stop monitoring
+            </div>
+
+            <h2>Performance Summary</h2>
+            <div style="text-align: center; margin: 30px 0;">
+                <div class="metric-box">
+                    <span class="metric-value">2 MHz</span>
+                    SPI Speed
+                </div>
+                <div class="metric-box">
+                    <span class="metric-value">100 Hz</span>
+                    Display Rate
+                </div>
+                <div class="metric-box">
+                    <span class="metric-value">~2 ms</span>
+                    Latency
+                </div>
+                <div class="metric-box">
+                    <span class="metric-value">3 Slaves</span>
+                    Scalable
+                </div>
+            </div>
+
+            <div class="highlight" style="margin-top: 40px; background: linear-gradient(120deg, #667eea 0%, #764ba2 100%);">
+                <h2 style="color: white;">🎯 Result</h2>
+                <p style="font-size: 1.2em; color: white;">
+                    Fast • Reliable • Non-Blocking • Real-Time Monitoring
+                </p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="slide" style="text-align: center; padding: 60px;">
+            <h1 style="font-size: 3em; margin-bottom: 20px;">Thank You! 🚀</h1>
+            <p style="font-size: 1.5em; color: #667eea;">
+                Multi-Slave SPI Communication System
+            </p>
+            <p style="font-size: 1.2em; margin-top: 20px; color: #764ba2;">
+                Questions & Discussion
+            </p>
+        </div>
+    </div>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistem Komunikasi SPI Master-Slave</title>
+    <title>Multi-Slave SPI Communication System</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
+            color: #333;
+            overflow-x: hidden;
         }
-        
+
         .container {
             max-width: 1200px;
             margin: 0 auto;
+            padding: 20px;
+        }
+
+        .slide {
             background: white;
             border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            overflow: hidden;
+            animation: slideIn 0.5s ease-out;
         }
-        
-        .header {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: white;
-            padding: 40px;
-            text-align: center;
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
-        
-        .header h1 {
+
+        h1 {
+            color: #667eea;
             font-size: 2.5em;
-            margin-bottom: 10px;
-        }
-        
-        .header p {
-            font-size: 1.2em;
-            opacity: 0.9;
-        }
-        
-        .nav-buttons {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-bottom: 2px solid #dee2e6;
-            flex-wrap: wrap;
-        }
-        
-        .nav-btn {
-            padding: 12px 24px;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: all 0.3s;
-            font-weight: 600;
-        }
-        
-        .nav-btn:hover {
-            background: #764ba2;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        }
-        
-        .nav-btn.active {
-            background: #2a5298;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-        }
-        
-        .content {
-            padding: 40px;
-        }
-        
-        .slide {
-            display: none;
-            animation: fadeIn 0.5s;
-        }
-        
-        .slide.active {
-            display: block;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        h2 {
-            color: #1e3c72;
-            font-size: 2em;
             margin-bottom: 20px;
+            border-bottom: 4px solid #667eea;
             padding-bottom: 10px;
-            border-bottom: 3px solid #667eea;
         }
-        
+
+        h2 {
+            color: #764ba2;
+            font-size: 2em;
+            margin: 30px 0 20px 0;
+        }
+
         h3 {
-            color: #2a5298;
+            color: #667eea;
             font-size: 1.5em;
-            margin-top: 30px;
-            margin-bottom: 15px;
+            margin: 20px 0 15px 0;
         }
-        
-        .info-box {
+
+        .highlight {
+            background: linear-gradient(120deg, #ffd89b 0%, #19547b 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+
+        .protocol-box {
             background: #f8f9fa;
             border-left: 5px solid #667eea;
             padding: 20px;
-            margin: 20px 0;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
             border-radius: 8px;
         }
-        
-        .protocol-table {
+
+        .packet-diagram {
+            display: flex;
+            gap: 5px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .packet-byte {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            flex: 1;
+            min-width: 100px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .packet-byte .label {
+            font-size: 0.8em;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+
+        .packet-byte .value {
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        .flow-diagram {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+
+        .flow-step {
+            background: white;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .flow-step:hover {
+            transform: translateX(10px);
+        }
+
+        .flow-arrow {
+            text-align: center;
+            color: #667eea;
+            font-size: 2em;
+            margin: 10px 0;
+        }
+
+        table {
             width: 100%;
             border-collapse: collapse;
             margin: 20px 0;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
-        
-        .protocol-table th {
-            background: #667eea;
+
+        th {
+            background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
             padding: 15px;
             text-align: left;
-            font-weight: 600;
-        }
-        
-        .protocol-table td {
-            padding: 12px 15px;
-            border-bottom: 1px solid #dee2e6;
-        }
-        
-        .protocol-table tr:nth-child(even) {
-            background: #f8f9fa;
-        }
-        
-        .protocol-table tr:hover {
-            background: #e9ecef;
-        }
-        
-        .code-block {
-            background: #282c34;
-            color: #abb2bf;
-            padding: 20px;
-            border-radius: 8px;
-            overflow-x: auto;
-            margin: 20px 0;
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            line-height: 1.6;
-        }
-        
-        .code-block .keyword {
-            color: #c678dd;
-        }
-        
-        .code-block .function {
-            color: #61afef;
-        }
-        
-        .code-block .string {
-            color: #98c379;
-        }
-        
-        .code-block .number {
-            color: #d19a66;
-        }
-        
-        .code-block .comment {
-            color: #5c6370;
-            font-style: italic;
-        }
-        
-        .diagram {
-            background: white;
-            border: 2px solid #667eea;
-            border-radius: 8px;
-            padding: 30px;
-            margin: 20px 0;
-            text-align: center;
-        }
-        
-        .flow-box {
-            display: inline-block;
-            padding: 15px 30px;
-            margin: 10px;
-            border-radius: 8px;
-            font-weight: 600;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        
-        .box-pc {
-            background: #ff6b6b;
-            color: white;
-        }
-        
-        .box-master {
-            background: #4ecdc4;
-            color: white;
-        }
-        
-        .box-slave {
-            background: #45b7d1;
-            color: white;
-        }
-        
-        .arrow {
-            font-size: 2em;
-            color: #667eea;
-            margin: 0 10px;
-        }
-        
-        .packet-diagram {
-            display: flex;
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 5px;
-            margin: 20px 0;
-        }
-        
-        .packet-byte {
-            padding: 15px;
-            border: 2px solid #667eea;
-            border-radius: 5px;
-            min-width: 80px;
-            text-align: center;
-            background: white;
-        }
-        
-        .packet-byte .label {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 5px;
-        }
-        
-        .packet-byte .value {
             font-weight: bold;
-            color: #1e3c72;
-            font-family: monospace;
         }
-        
-        .highlight {
-            background: #fff3cd;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-weight: 600;
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #ddd;
         }
-        
+
+        tr:hover {
+            background: #f5f5f5;
+        }
+
+        .code-block {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
+        }
+
+        .keyword {
+            color: #569cd6;
+        }
+
+        .string {
+            color: #ce9178;
+        }
+
+        .comment {
+            color: #6a9955;
+        }
+
+        .number {
+            color: #b5cea8;
+        }
+
         .state-machine {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 15px;
             margin: 20px 0;
         }
-        
+
         .state {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
             padding: 20px;
-            border-radius: 8px;
+            border-radius: 10px;
             text-align: center;
-            font-weight: 600;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease;
         }
-        
-        .timing-diagram {
-            background: white;
-            padding: 20px;
-            border: 2px solid #667eea;
-            border-radius: 8px;
+
+        .state:hover {
+            transform: scale(1.05);
+        }
+
+        .connection-diagram {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 15px;
             margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            line-height: 2;
         }
-        
-        .timeline {
+
+        .pin-connection {
             display: flex;
             align-items: center;
-            margin: 15px 0;
-        }
-        
-        .timeline-label {
-            min-width: 150px;
-            font-weight: 600;
-            color: #1e3c72;
-        }
-        
-        .timeline-bar {
-            flex: 1;
-            height: 30px;
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-            border-radius: 5px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        ul {
-            margin: 15px 0;
-            padding-left: 30px;
-        }
-        
-        li {
             margin: 10px 0;
-            line-height: 1.6;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        
+
+        .pin-master {
+            background: #667eea;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            min-width: 120px;
+            font-weight: bold;
+        }
+
+        .pin-arrow {
+            margin: 0 20px;
+            color: #764ba2;
+            font-size: 1.5em;
+        }
+
+        .pin-slave {
+            background: #764ba2;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            min-width: 120px;
+            font-weight: bold;
+        }
+
         .feature-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 20px;
             margin: 20px 0;
         }
-        
+
         .feature-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
             padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease;
         }
-        
-        .feature-card h4 {
-            font-size: 1.2em;
-            margin-bottom: 10px;
+
+        .feature-card:hover {
+            transform: translateY(-5px);
         }
-        
-        .footer {
-            background: #f8f9fa;
+
+        .feature-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        .timing-diagram {
+            background: #1e1e1e;
+            color: #d4d4d4;
             padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            line-height: 1.8;
+        }
+
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .info {
+            color: #17a2b8;
+            font-weight: bold;
+        }
+
+        .metric-box {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            margin: 10px;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .metric-value {
+            font-size: 2em;
+            display: block;
+        }
+
+        .sequence-diagram {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+
+        .sequence-step {
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+        }
+
+        .actor {
+            min-width: 100px;
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border-radius: 8px;
             text-align: center;
-            color: #666;
-            border-top: 2px solid #dee2e6;
+            font-weight: bold;
+        }
+
+        .message {
+            flex: 1;
+            margin: 0 15px;
+            padding: 10px;
+            background: white;
+            border: 2px solid #764ba2;
+            border-radius: 8px;
+            position: relative;
+        }
+
+        .message::after {
+            content: '→';
+            position: absolute;
+            right: -20px;
+            color: #764ba2;
+            font-size: 1.5em;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>🔌 Sistem Komunikasi SPI Master-Slave</h1>
-            <p>Arsitektur Komunikasi Multi-Slave dengan Protocol Custom</p>
-        </div>
-        
-        <div class="nav-buttons">
-            <button class="nav-btn active" onclick="showSlide(0)">Overview</button>
-            <button class="nav-btn" onclick="showSlide(1)">Arsitektur</button>
-            <button class="nav-btn" onclick="showSlide(2)">Protocol SPI</button>
-            <button class="nav-btn" onclick="showSlide(3)">Format Paket</button>
-            <button class="nav-btn" onclick="showSlide(4)">State Machine</button>
-            <button class="nav-btn" onclick="showSlide(5)">Alur Data</button>
-            <button class="nav-btn" onclick="showSlide(6)">Command & Response</button>
-            <button class="nav-btn" onclick="showSlide(7)">PC Interface</button>
-            <button class="nav-btn" onclick="showSlide(8)">Optimasi</button>
-        </div>
-        
-        <div class="content">
-            <!-- Slide 0: Overview -->
-            <div class="slide active">
-                <h2>📋 Overview Sistem</h2>
-                
-                <div class="info-box">
-                    <h3>🎯 Tujuan Sistem</h3>
-                    <p>Sistem ini adalah implementasi komunikasi <strong>Master-Multi Slave</strong> menggunakan protokol <strong>SPI (Serial Peripheral Interface)</strong> dengan custom protocol layer untuk komunikasi yang reliable dan terstruktur.</p>
-                </div>
-                
-                <h3>🔧 Komponen Utama</h3>
-                <div class="feature-grid">
-                    <div class="feature-card">
-                        <h4>💻 PC (Computer)</h4>
-                        <p>Mengirim command melalui Serial UART untuk request data dari slave tertentu</p>
-                    </div>
-                    <div class="feature-card">
-                        <h4>🎛️ Master Arduino</h4>
-                        <p>Mengontrol komunikasi SPI, mengelola 3 slave, display LCD, dan EEPROM storage</p>
-                    </div>
-                    <div class="feature-card">
-                        <h4>🤖 Slave Arduino (3x)</h4>
-                        <p>Membaca sensor analog, button, counter interrupt, dan merespon command dari master</p>
-                    </div>
-                
-                <div class="info-box">
-                    <p><strong>Total: 6 bytes</strong></p>
-                    <p>Digunakan untuk CMD_READ_SENSOR (Analog 10-bit, dikemas dalam 2 bytes)</p>
-                </div>
-                
-                <h3>📊 Contoh Paket Lengkap</h3>
-                
-                <div class="code-block">
-<span class="comment">// === REQUEST: Read Analog dari Slave 2 ===</span>
-Master kirim: [<span class="number">0xFF</span>, <span class="number">0xFE</span>, <span class="number">0x02</span>, <span class="number">0x02</span>, <span class="number">0x00</span>]
-              |SYNC1| |SYNC2| |ID=2| |CMD=2| |CS=2^2|
-
-<span class="comment">// === RESPONSE: Analog value = 512 (0x0200) ===</span>
-Slave kirim:  [<span class="number">0xFF</span>, <span class="number">0xFE</span>, <span class="number">0x02</span>, <span class="number">0x02</span>, <span class="number">0x00</span>, <span class="number">0x00</span>]
-              |SYNC1| |SYNC2| |ID=2| |HIGH| |LOW | |CS=2^2^0|
-</div>
+        <!-- Slide 1: Title -->
+        <div class="slide">
+            <h1>🚀 Multi-Slave SPI Communication System</h1>
+            <div class="highlight">
+                <h2>Sistem Komunikasi SPI Master-Slave dengan Protocol Custom</h2>
+                <p style="font-size: 1.2em; margin-top: 15px;">
+                    Real-time monitoring • Fast & Non-blocking • PC Control Interface
+                </p>
             </div>
-            
-            <!-- Slide 4: State Machine -->
-            <div class="slide">
-                <h2>🔄 State Machine Slave (ISR)</h2>
-                
-                <div class="info-box">
-                    <h3>🎯 Mengapa State Machine?</h3>
-                    <p>Slave menggunakan <strong>Interrupt Service Routine (ISR)</strong> untuk menangani setiap byte yang diterima dari SPI. State machine memastikan slave dapat:</p>
-                    <ul>
-                        <li>Parsing paket secara sequential byte-per-byte</li>
-                        <li>Validasi sync pattern dan checksum</li>
-                        <li>Mengirim response yang tepat</li>
-                        <li>Reset state jika SS pin deasserted</li>
-                    </ul>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">📡</div>
+                    <h3>SPI Protocol</h3>
+                    <p>Custom packet format dengan checksum validation</p>
                 </div>
-                
-                <h3>🔀 State Diagram</h3>
-                
-                <div class="state-machine">
-                    <div class="state">
-                        WAIT_SYNC1<br>
-                        <small>Tunggu 0xFF</small>
-                    </div>
-                    <div class="state">
-                        WAIT_SYNC2<br>
-                        <small>Tunggu 0xFE</small>
-                    </div>
-                    <div class="state">
-                        WAIT_ID<br>
-                        <small>Cek Slave ID</small>
-                    </div>
-                    <div class="state">
-                        WAIT_CMD<br>
-                        <small>Terima Command</small>
-                    </div>
-                    <div class="state">
-                        WAIT_CHECKSUM<br>
-                        <small>Validasi Checksum</small>
-                    </div>
-                    <div class="state">
-                        SEND_RESPONSE<br>
-                        <small>Kirim Data</small>
-                    </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3>High Speed</h3>
+                    <p>2 MHz SPI Clock, 100 updates/sec</p>
                 </div>
-                
-                <h3>📝 Detail Setiap State</h3>
-                
-                <table class="protocol-table">
-                    <tr>
-                        <th>State</th>
-                        <th>Kondisi Next</th>
-                        <th>Action</th>
-                    </tr>
-                    <tr>
-                        <td><strong>WAIT_SYNC1</strong></td>
-                        <td>Receive == 0xFF</td>
-                        <td>→ WAIT_SYNC2, Load 0x00 to SPDR</td>
-                    </tr>
-                    <tr>
-                        <td><strong>WAIT_SYNC2</strong></td>
-                        <td>Receive == 0xFE</td>
-                        <td>→ WAIT_ID, Load 0x00 to SPDR</td>
-                    </tr>
-                    <tr>
-                        <td><strong>WAIT_ID</strong></td>
-                        <td>Receive == SLAVE_ID</td>
-                        <td>→ WAIT_CMD, Store ID, Load 0x00</td>
-                    </tr>
-                    <tr>
-                        <td><strong>WAIT_CMD</strong></td>
-                        <td>Always</td>
-                        <td>→ WAIT_CHECKSUM, Store CMD, Load 0x00</td>
-                    </tr>
-                    <tr>
-                        <td><strong>WAIT_CHECKSUM</strong></td>
-                        <td>Checksum Valid</td>
-                        <td>→ SEND_RESPONSE, Prepare Response Buffer</td>
-                    </tr>
-                    <tr>
-                        <td><strong>SEND_RESPONSE</strong></td>
-                        <td>All bytes sent</td>
-                        <td>→ WAIT_SYNC1, Load next byte to SPDR</td>
-                    </tr>
-                </table>
-                
-                <h3>⚡ Implementasi ISR</h3>
-                
-                <div class="code-block">
-<span class="function">ISR</span>(<span class="string">SPI_STC_vect</span>) {
-  <span class="comment">// Reset jika SS pin HIGH</span>
-  <span class="keyword">if</span>(digitalRead(SS_PIN) == HIGH) {
-    currentState = WAIT_SYNC1;
-    responseReady = <span class="keyword">false</span>;
-    responseIndex = <span class="number">0</span>;
-    SPDR = <span class="number">0x00</span>;
-    <span class="keyword">return</span>;
-  }
-  
-  <span class="keyword">uint8_t</span> received = SPDR;
-  <span class="keyword">uint8_t</span> toSend = <span class="number">0x00</span>;
-  
-  <span class="keyword">switch</span> (currentState) {
-    <span class="keyword">case</span> WAIT_SYNC1:
-      <span class="keyword">if</span> (received == SYNC1) {
-        currentState = WAIT_SYNC2;
-      }
-      <span class="keyword">break</span>;
-      
-    <span class="keyword">case</span> WAIT_SYNC2:
-      <span class="keyword">if</span> (received == SYNC2) {
-        currentState = WAIT_ID;
-      } <span class="keyword">else</span> {
-        currentState = WAIT_SYNC1;
-      }
-      <span class="keyword">break</span>;
-      
-    <span class="keyword">case</span> WAIT_ID:
-      receivedID = received;
-      <span class="keyword">if</span> (receivedID == SLAVE_ID) {
-        currentState = WAIT_CMD;
-      } <span class="keyword">else</span> {
-        currentState = WAIT_SYNC1;  <span class="comment">// Bukan untuk slave ini</span>
-      }
-      <span class="keyword">break</span>;
-      
-    <span class="keyword">case</span> WAIT_CMD:
-      receivedCMD = received;
-      currentState = WAIT_CHECKSUM;
-      <span class="keyword">break</span>;
-      
-    <span class="keyword">case</span> WAIT_CHECKSUM:
-      <span class="keyword">if</span> (received == (receivedID ^ receivedCMD)) {
-        <span class="function">prepareResponse</span>(receivedCMD);  <span class="comment">// Siapkan data</span>
-        currentState = SEND_RESPONSE;
-        toSend = responseBuffer[<span class="number">0</span>];
-      } <span class="keyword">else</span> {
-        currentState = WAIT_SYNC1;  <span class="comment">// Checksum salah</span>
-      }
-      <span class="keyword">break</span>;
-      
-    <span class="keyword">case</span> SEND_RESPONSE:
-      responseIndex++;
-      <span class="keyword">if</span> (responseIndex < responseLength) {
-        toSend = responseBuffer[responseIndex];
-      } <span class="keyword">else</span> {
-        currentState = WAIT_SYNC1;  <span class="comment">// Selesai</span>
-      }
-      <span class="keyword">break</span>;
-  }
-  
-  SPDR = toSend;  <span class="comment">// Load byte untuk transfer berikutnya</span>
-}
+                <div class="feature-card">
+                    <div class="feature-icon">💾</div>
+                    <h3>EEPROM Storage</h3>
+                    <p>Automatic data backup</p>
                 </div>
-                
-                <h3>📸 Data Snapshot untuk Konsistensi</h3>
-                
-                <div class="info-box">
-                    <p>Slave menggunakan <strong>snapshot mechanism</strong> untuk memastikan data yang dikirim konsisten:</p>
-                    <div class="code-block">
-<span class="keyword">void</span> <span class="function">prepareResponse</span>(<span class="keyword">uint8_t</span> cmd) {
-  <span class="comment">// Ambil snapshot data dengan interrupt disabled</span>
-  <span class="function">noInterrupts</span>();
-  analogSnapshot = analogVal;
-  cntSnapshot = cnt;
-  pb2Snapshot = pb2 ? <span class="number">1</span> : <span class="number">0</span>;
-  <span class="function">interrupts</span>();
-  
-  <span class="comment">// Build response packet berdasarkan command</span>
-  <span class="comment">// ...</span>
-}
-                    </div>
-                    <p>Ini mencegah data berubah di tengah-tengah proses pengiriman response</p>
-                </div>
-            </div>
-            
-            <!-- Slide 5: Alur Data -->
-            <div class="slide">
-                <h2>🔀 Alur Data Lengkap: PC → Master → Slave</h2>
-                
-                <h3>📍 Skenario: PC Request Data Analog dari Slave 2</h3>
-                
-                <div class="diagram">
-                    <h4 style="color: #1e3c72; margin-bottom: 20px;">Step-by-Step Flow</h4>
-                    
-                    <div style="text-align: left; max-width: 800px; margin: 0 auto;">
-                        <div style="background: #fff3cd; padding: 15px; border-left: 5px solid #ffc107; margin: 10px 0; border-radius: 5px;">
-                            <strong>1️⃣ PC → Master (UART Serial)</strong><br>
-                            PC mengirim: <code>"22"</code><br>
-                            <small>• Karakter '2' pertama = Slave ID 2</small><br>
-                            <small>• Karakter '2' kedua = Data Select 2 (Analog)</small>
-                        </div>
-                        
-                        <div style="background: #d1ecf1; padding: 15px; border-left: 5px solid #17a2b8; margin: 10px 0; border-radius: 5px;">
-                            <strong>2️⃣ Master Parse Command</strong><br>
-                            <code>requestedSlave = 2</code><br>
-                            <code>requestedData = 2</code><br>
-                            <code>pcRequestActive = true</code><br>
-                            <small>• Master mengaktifkan mode streaming periodik (10ms interval)</small>
-                        </div>
-                        
-                        <div style="background: #d4edda; padding: 15px; border-left: 5px solid #28a745; margin: 10px 0; border-radius: 5px;">
-                            <strong>3️⃣ Master → Slave 2 (SPI Request)</strong><br>
-                            <code>digitalWrite(SS_SLAVE2, LOW)</code><br>
-                            Master kirim: <code>[0xFF, 0xFE, 0x02, 0x02, 0x00]</code><br>
-                            <small>• SS_SLAVE2 (A14) di-assert LOW</small><br>
-                            <small>• Command: READ_SENSOR (0x02)</small><br>
-                            <small>• Checksum: 0x02 XOR 0x02 = 0x00</small>
-                        </div>
-                        
-                        <div style="background: #f8d7da; padding: 15px; border-left: 5px solid #dc3545; margin: 10px 0; border-radius: 5px;">
-                            <strong>4️⃣ Slave 2 Process (ISR State Machine)</strong><br>
-                            <small>• State: WAIT_SYNC1 → ... → WAIT_CHECKSUM</small><br>
-                            <small>• Validasi checksum berhasil</small><br>
-                            <small>• Ambil snapshot: analogSnapshot = 512</small><br>
-                            <small>• Build response: [0xFF, 0xFE, 0x02, 0x02, 0x00, 0x00]</small><br>
-                            <small>• State: SEND_RESPONSE</small>
-                        </div>
-                        
-                        <div style="background: #d4edda; padding: 15px; border-left: 5px solid #28a745; margin: 10px 0; border-radius: 5px;">
-                            <strong>5️⃣ Master Receive Response (SPI)</strong><br>
-                            Master baca 15 bytes, cari sync pattern<br>
-                            Dapat: <code>[0xFF, 0xFE, 0x02, 0x02, 0x00, 0x00]</code><br>
-                            <small>• Validasi: ID=0x02 ✓</small><br>
-                            <small>• Checksum: (0x02 XOR 0x02 XOR 0x00) = 0x00 ✓</small><br>
-                            <small>• Analog value = (0x02 << 8) | 0x00 = 512</small><br>
-                            <code>digitalWrite(SS_SLAVE2, HIGH)</code>
-                        </div>
-                        
-                        <div style="background: #d1ecf1; padding: 15px; border-left: 5px solid #17a2b8; margin: 10px 0; border-radius: 5px;">
-                            <strong>6️⃣ Master Update Data Structure</strong><br>
-                            <code>slave2Data.analog = 512</code><br>
-                            <code>slave2Data.valid = true</code><br>
-                            <small>• Simpan ke EEPROM offset 4-7</small>
-                        </div>
-                        
-                        <div style="background: #fff3cd; padding: 15px; border-left: 5px solid #ffc107; margin: 10px 0; border-radius: 5px;">
-                            <strong>7️⃣ Master → PC (UART Serial)</strong><br>
-                            Serial print: <code>">>> 512"</code><br>
-                            <small>• Output sesuai requestedData (2 = Analog only)</small><br>
-                            <small>• Proses berulang setiap 10ms sampai PC kirim "STOP"</small>
-                        </div>
-                    </div>
-                </div>
-                
-                <h3>⏱️ Timing Diagram</h3>
-                
-                <div class="timing-diagram">
-                    <div class="timeline">
-                        <div class="timeline-label">PC → Master</div>
-                        <div class="timeline-bar">~1 ms (UART 115200)</div>
-                    </div>
-                    <div class="timeline">
-                        <div class="timeline-label">Master Process</div>
-                        <div class="timeline-bar">~0.1 ms</div>
-                    </div>
-                    <div class="timeline">
-                        <div class="timeline-label">SPI Transaction</div>
-                        <div class="timeline-bar">~0.5 ms (dengan delays)</div>
-                    </div>
-                    <div class="timeline">
-                        <div class="timeline-label">Data Processing</div>
-                        <div class="timeline-bar">~0.2 ms</div>
-                    </div>
-                    <div class="timeline">
-                        <div class="timeline-label">Master → PC</div>
-                        <div class="timeline-bar">~1 ms (UART 115200)</div>
-                    </div>
-                    <div style="text-align: center; margin-top: 15px; font-weight: bold; color: #1e3c72;">
-                        Total: ~2.8 ms per cycle
-                    </div>
-                    <div style="text-align: center; margin-top: 5px; color: #666;">
-                        Repeat setiap 10 ms = ~357 samples/second
-                    </div>
-                </div>
-                
-                <h3>🔄 Non-Blocking Architecture</h3>
-                
-                <div class="info-box">
-                    <p><strong>Master menggunakan pendekatan non-blocking:</strong></p>
-                    <ul>
-                        <li><strong>LCD Update:</strong> Timer-based, 500ms interval</li>
-                        <li><strong>PC Display:</strong> Timer-based, 10ms interval (fast streaming)</li>
-                        <li><strong>Serial Check:</strong> Non-blocking <code>Serial.available()</code></li>
-                        <li><strong>SPI Operations:</strong> Quick polling dengan minimal delay</li>
-                    </ul>
-                    <p>Semua task berjalan dalam <code>loop()</code> tanpa blocking <code>delay()</code> panjang</p>
-                </div>
-            </div>
-            
-            <!-- Slide 6: Command & Response -->
-            <div class="slide">
-                <h2>💬 Command & Response Detail</h2>
-                
-                <h3>1️⃣ Read PB2 Value (CMD 0x01)</h3>
-                
-                <div class="info-box">
-                    <p><strong>Request:</strong></p>
-                    <div class="packet-diagram">
-                        <div class="packet-byte">
-                            <div class="value">0xFF</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0xFE</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0x01</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0x01</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0x00</div>
-                        </div>
-                    </div>
-                    
-                    <p><strong>Response:</strong></p>
-                    <div class="packet-diagram">
-                        <div class="packet-byte">
-                            <div class="value">0xFF</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0xFE</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0x01</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0/1</div>
-                            <div class="label">PB2</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">CHK</div>
-                        </div>
-                    </div>
-                    
-                    <p><strong>Fungsi Slave:</strong></p>
-                    <div class="code-block">
-<span class="comment">// Toggle button pada pin A7</span>
-<span class="keyword">bool</span> pb2 = <span class="keyword">false</span>;
-<span class="keyword">int</span> readPB2 = (analogRead(A7) == <span class="number">0</span>) ? <span class="number">0</span> : <span class="number">1</span>;
-
-<span class="keyword">if</span> (readPB2 != lastPB2 && millis() - lastDeb > <span class="number">50</span>) {
-  <span class="keyword">if</span> (readPB2 == LOW) {
-    pb2 = !pb2;  <span class="comment">// Toggle state</span>
-  }
-}
-                    </div>
-                </div>
-                
-                <h3>2️⃣ Read Analog Sensor (CMD 0x02)</h3>
-                
-                <div class="info-box">
-                    <p><strong>Request:</strong></p>
-                    <div class="packet-diagram">
-                        <div class="packet-byte">
-                            <div class="value">0xFF</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0xFE</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0x01</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0x02</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0x03</div>
-                        </div>
-                    </div>
-                    
-                    <p><strong>Response:</strong></p>
-                    <div class="packet-diagram">
-                        <div class="packet-byte">
-                            <div class="value">0xFF</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0xFE</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0x01</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">HIGH</div>
-                            <div class="label">Bit[15:8]</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">LOW</div>
-                            <div class="label">Bit[7:0]</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">CHK</div>
-                        </div>
-                    </div>
-                    
-                    <p><strong>Fungsi Slave:</strong></p>
-                    <div class="code-block">
-<span class="comment">// Baca analog dari A0 (0-1023)</span>
-analogVal = <span class="function">analogRead</span>(A0);
-
-<span class="comment">// Logic: toggle pb1 jika analog 300-700 selama 1 detik</span>
-<span class="keyword">if</span> (analogVal > <span class="number">300</span> && analogVal < <span class="number">700</span>) {
-  <span class="keyword">if</span> (millis() - lastA0ToggleTime > <span class="number">1000</span>) {
-    lastA0ToggleTime = millis();
-    pb1 = !pb1;
-  }
-}
-                    </div>
-                </div>
-                
-                <h3>3️⃣ Read Counter (CMD 0x03)</h3>
-                
-                <div class="info-box">
-                    <p><strong>Request:</strong></p>
-                    <div class="packet-diagram">
-                        <div class="packet-byte">
-                            <div class="value">0xFF</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0xFE</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0x01</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0x03</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0x02</div>
-                        </div>
-                    </div>
-                    
-                    <p><strong>Response:</strong></p>
-                    <div class="packet-diagram">
-                        <div class="packet-byte">
-                            <div class="value">0xFF</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0xFE</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0x01</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">0-255</div>
-                            <div class="label">Counter</div>
-                        </div>
-                        <div class="packet-byte">
-                            <div class="value">CHK</div>
-                        </div>
-                    </div>
-                    
-                    <p><strong>Fungsi Slave:</strong></p>
-                    <div class="code-block">
-<span class="comment">// Interrupt pada pin 3 (falling edge)</span>
-<span class="keyword">volatile uint8_t</span> cnt = <span class="number">0</span>;
-
-<span class="keyword">void</span> <span class="function">isrInt1</span>() {
-  <span class="keyword">static unsigned long</span> last = <span class="number">0</span>;
-  <span class="keyword">unsigned long</span> now = <span class="function">micros</span>();
-  
-  <span class="comment">// Debouncing 50ms</span>
-  <span class="keyword">if</span> (now - last > <span class="number">50000</span>) {
-    last = now;
-    cnt++;  <span class="comment">// Increment counter</span>
-  }
-}
-
-<span class="function">attachInterrupt</span>(<span class="function">digitalPinToInterrupt</span>(<span class="number">3</span>), isrInt1, FALLING);
-                    </div>
-                    
-                    <p><strong>Auto LED Blink Logic:</strong></p>
-                    <div class="code-block">
-<span class="comment">// Jika counter > 5, blink LED 3x</span>
-<span class="keyword">if</span> (cnt > <span class="number">5</span> && !blinking) {
-  cnt = <span class="number">0</span>;
-  blinking = <span class="keyword">true</span>;
-  blinkCount = <span class="number">0</span>;
-}
-                    </div>
-                </div>
-                
-                <h3>🔍 Master Parsing Logic</h3>
-                
-                <div class="code-block">
-<span class="comment">// Cari sync pattern dalam 15 bytes response</span>
-<span class="keyword">for</span> (<span class="keyword">int</span> i = <span class="number">0</span>; i < <span class="number">10</span>; i++) {
-  <span class="keyword">if</span> (response[i] == SYNC1 && 
-      response[i+<span class="number">1</span>] == SYNC2 && 
-      response[i+<span class="number">2</span>] == slaveID) {
-    
-    <span class="comment">// Single byte data</span>
-    <span class="keyword">uint8_t</span> data = response[i+<span class="number">3</span>];
-    <span class="keyword">uint8_t</span> recvChecksum = response[i+<span class="number">4</span>];
-    <span class="keyword">uint8_t</span> expectedChecksum = slaveID ^ data;
-    
-    <span class="keyword">if</span> (recvChecksum == expectedChecksum) {
-      <span class="keyword">return</span> data;
-    }
-  }
-}
-                </div>
-            </div>
-            
-            <!-- Slide 7: PC Interface -->
-            <div class="slide">
-                <h2>🖥️ PC Interface & Control</h2>
-                
-                <h3>📝 Format Command PC</h3>
-                
-                <div class="info-box">
-                    <p><strong>Command Format:</strong> <code>XY</code> (2 karakter)</p>
-                    <ul>
-                        <li><strong>X</strong> = Slave ID (1, 2, atau 3)</li>
-                        <li><strong>Y</strong> = Data Select (1-7)</li>
-                    </ul>
-                    <p><strong>Special Command:</strong> <code>STOP</code> untuk menghentikan streaming</p>
-                </div>
-                
-                <h3>📊 Data Select Options</h3>
-                
-                <table class="protocol-table">
-                    <tr>
-                        <th>Code</th>
-                        <th>Output</th>
-                        <th>Contoh Command</th>
-                        <th>Contoh Output</th>
-                    </tr>
-                    <tr>
-                        <td><strong>1</strong></td>
-                        <td>PB2 only</td>
-                        <td>11</td>
-                        <td>>>> 1</td>
-                    </tr>
-                    <tr>
-                        <td><strong>2</strong></td>
-                        <td>ADC only</td>
-                        <td>22</td>
-                        <td>>>> 512</td>
-                    </tr>
-                    <tr>
-                        <td><strong>3</strong></td>
-                        <td>PB2 + ADC</td>
-                        <td>13</td>
-                        <td>>>> 1 512</td>
-                    </tr>
-                    <tr>
-                        <td><strong>4</strong></td>
-                        <td>Counter only</td>
-                        <td>34</td>
-                        <td>>>> 7</td>
-                    </tr>
-                    <tr>
-                        <td><strong>5</strong></td>
-                        <td>PB2 + Counter</td>
-                        <td>25</td>
-                        <td>>>> 0 7</td>
-                    </tr>
-                    <tr>
-                        <td><strong>6</strong></td>
-                        <td>ADC + Counter</td>
-                        <td>16</td>
-                        <td>>>> 512 7</td>
-                    </tr>
-                    <tr>
-                        <td><strong>7</strong></td>
-                        <td>ALL (PB2+ADC+CNT)</td>
-                        <td>37</td>
-                        <td>>>> 1 512 7</td>
-                    </tr>
-                </table>
-                
-                <h3>💻 Contoh Session PC</h3>
-                
-                <div class="code-block">
-<span class="comment">=================================
-Master SPI Controller - FAST
-=================================
-PC Commands: XY
-  X = Slave ID (1-3)
-  Y = Data (1-7):
-    1=PB2, 2=ADC, 3=PB2+ADC
-    4=CNT, 5=PB2+CNT, 6=ADC+CNT, 7=ALL
-Send 'STOP' to stop display
-=================================
-Ready! (Non-blocking mode)
-</span>
-<span class="string">&gt; 22</span>
-
-<span class="comment">[S2 D2 - STOP to stop]</span>
->>> <span class="number">512</span>
->>> <span class="number">513</span>
->>> <span class="number">515</span>
->>> <span class="number">518</span>
->>> <span class="number">520</span>
-<span class="comment">... (streaming setiap 10ms) ...</span>
-
-<span class="string">&gt; STOP</span>
-
-<span class="comment">[Display stopped]</span>
-
-<span class="string">&gt; 37</span>
-
-<span class="comment">[S3 D7 - STOP to stop]</span>
->>> <span class="number">1 456 12</span>
->>> <span class="number">0 458 12</span>
->>> <span class="number">0 460 13</span>
-<span class="comment">... (PB2 ADC Counter dari Slave 3) ...</span>
-                </div>
-                
-                <h3>🔧 Implementasi Handler</h3>
-                
-                <div class="code-block">
-<span class="keyword">void</span> <span class="function">handlePCRequest</span>() {
-  String input = Serial.<span class="function">readStringUntil</span>(<span class="string">'\n'</span>);
-  input.<span class="function">trim</span>();
-  input.<span class="function">toUpperCase</span>();
-  
-  <span class="comment">// Check STOP command</span>
-  <span class="keyword">if</span> (input == <span class="string">"STOP"</span>) {
-    pcRequestActive = <span class="keyword">false</span>;
-    Serial.<span class="function">println</span>(<span class="string">"[Display stopped]"</span>);
-    <span class="keyword">return</span>;
-  }
-  
-  <span class="comment">// Parse XY command</span>
-  <span class="keyword">uint8_t</span> slaveNum = input.<span class="function">charAt</span>(<span class="number">0</span>) - <span class="string">'0'</span>;
-  <span class="keyword">uint8_t</span> dataSelect = input.<span class="function">charAt</span>(<span class="number">1</span>) - <span class="string">'0'</span>;
-  
-  <span class="comment">// Validasi</span>
-  <span class="keyword">if</span> (slaveNum < <span class="number">1</span> || slaveNum > <span class="number">3</span>) {
-    Serial.<span class="function">println</span>(<span class="string">"Error: Slave ID harus 1-3"</span>);
-    <span class="keyword">return</span>;
-  }
-  
-  <span class="comment">// Aktifkan streaming</span>
-  requestedSlave = slaveNum;
-  requestedData = dataSelect;
-  pcRequestActive = <span class="keyword">true</span>;
-  lastPCDisplay = <span class="number">0</span>;  <span class="comment">// Trigger langsung</span>
-}
-                </div>
-                
-                <h3>⚡ Fast Streaming Logic</h3>
-                
-                <div class="code-block">
-<span class="keyword">void</span> <span class="function">loop</span>() {
-  <span class="comment">// Streaming periodik (10ms interval)</span>
-  <span class="keyword">if</span> (pcRequestActive && (millis() - lastPCDisplay >= pcDisplayInterval)) {
-    lastPCDisplay = millis();
-    <span class="function">fetchAndDisplay</span>();  <span class="comment">// Ambil data & tampilkan</span>
-  }
-  
-  <span class="comment">// Handle new command</span>
-  <span class="keyword">if</span> (Serial.<span class="function">available</span>() > <span class="number">0</span>) {
-    <span class="function">handlePCRequest</span>();
-  }
-}
-
-<span class="keyword">void</span> <span class="function">fetchAndDisplay</span>() {
-  <span class="comment">// Poll slave untuk data terbaru</span>
-  <span class="keyword">bool</span> success = <span class="function">quickPollSlave</span>(requestedSlave, ssPin, *dataPtr, eepromBase);
-  
-  <span class="keyword">if</span> (success) {
-    <span class="comment">// Tampilkan sesuai requestedData</span>
-    Serial.<span class="function">print</span>(<span class="string">">>> "</span>);
-    
-    <span class="keyword">switch</span> (requestedData) {
-      <span class="keyword">case</span> <span class="number">1</span>: Serial.<span class="function">println</span>(dataPtr->pb2); <span class="keyword">break</span>;
-      <span class="keyword">case</span> <span class="number">2</span>: Serial.<span class="function">println</span>(dataPtr->analog); <span class="keyword">break</span>;
-      <span class="keyword">case</span> <span class="number">3</span>: 
-        Serial.<span class="function">print</span>(dataPtr->pb2); 
-        Serial.<span class="function">print</span>(<span class="string">" "</span>); 
-        Serial.<span class="function">println</span>(dataPtr->analog); 
-        <span class="keyword">break</span>;
-      <span class="comment">// ... dst untuk case 4-7</span>
-    }
-  }
-}
-                </div>
-            </div>
-            
-            <!-- Slide 8: Optimasi -->
-            <div class="slide">
-                <h2>⚡ Optimasi & Performance</h2>
-                
-                <h3>🚀 Teknik Optimasi</h3>
-                
-                <div class="feature-grid">
-                    <div class="feature-card">
-                        <h4>⏱️ Timing Optimization</h4>
-                        <p><strong>SPI Clock Divider 8</strong><br>
-                        Clock speed 2 MHz untuk transfer cepat</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <h4>📦 Minimal Protocol Overhead</h4>
-                        <p><strong>5-6 bytes per transaksi</strong><br>
-                        Sync + ID + CMD/Data + Checksum</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <h4>🔄 Non-Blocking Architecture</h4>
-                        <p><strong>Timer-based tasks</strong><br>
-                        Semua operasi asynchronous</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <h4>💾 Smart Caching</h4>
-                        <p><strong>EEPROM Auto-save</strong><br>
-                        Data persisten untuk recovery</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <h4>📸 Data Snapshot</h4>
-                        <p><strong>Atomic data capture</strong><br>
-                        Konsistensi data terjamin</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <h4>🎯 Selective Polling</h4>
-                        <p><strong>Quick poll function</strong><br>
-                        Hanya polling slave yang diminta</p>
-                    </div>
-                </div>
-                
-                <h3>📊 Performance Metrics</h3>
-                
-                <table class="protocol-table">
-                    <tr>
-                        <th>Metric</th>
-                        <th>Value</th>
-                        <th>Keterangan</th>
-                    </tr>
-                    <tr>
-                        <td><strong>SPI Transfer Rate</strong></td>
-                        <td>2 MHz</td>
-                        <td>~4 μs per byte</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Single Transaction</strong></td>
-                        <td>~0.5 ms</td>
-                        <td>Request + Response + Processing</td>
-                    </tr>
-                    <tr>
-                        <td><strong>PC Streaming Rate</strong></td>
-                        <td>100 Hz</td>
-                        <td>10 ms interval (configurable)</td>
-                    </tr>
-                    <tr>
-                        <td><strong>LCD Update Rate</strong></td>
-                        <td>2 Hz</td>
-                        <td>500 ms per page rotation</td>
-                    </tr>
-                    <tr>
-                        <td><strong>UART Bandwidth</strong></td>
-                        <td>115200 bps</td>
-                        <td>~11.5 KB/s theoretical</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Interrupt Debounce</strong></td>
-                        <td>50 ms</td>
-                        <td>Button & interrupt filtering</td>
-                    </tr>
-                </table>
-                
-                <h3>🔧 Code Optimization Techniques</h3>
-                
-                <div class="info-box">
-                    <h4>1. Reduced Delay Times</h4>
-                    <div class="code-block">
-<span class="comment">// Optimized timing dengan delayMicroseconds</span>
-digitalWrite(ssPin, LOW);
-<span class="function">delayMicroseconds</span>(<span class="number">20</span>);    <span class="comment">// SS setup time</span>
-
-SPI.<span class="function">transfer</span>(SYNC1);
-<span class="function">delayMicroseconds</span>(<span class="number">10</span>);    <span class="comment">// Inter-byte delay</span>
-
-SPI.<span class="function">transfer</span>(SYNC2);
-<span class="function">delayMicroseconds</span>(<span class="number">10</span>);
-                    </div>
-                </div>
-                
-                <div class="info-box">
-                    <h4>2. Direct Register Access (Slave)</h4>
-                    <div class="code-block">
-<span class="comment">// Setup SPI slave mode dengan register langsung</span>
-SPCR = (<span class="number">1</span> << SPE) | (<span class="number">1</span> << SPIE);  <span class="comment">// Enable SPI & Interrupt</span>
-SPCR &= ~(<span class="number">1</span> << MSTR);            <span class="comment">// Slave mode</span>
-
-<span class="comment">// Pre-load SPDR untuk respon cepat</span>
-SPDR = <span class="number">0x00</span>;
-                    </div>
-                </div>
-                
-                <div class="info-box">
-                    <h4>3. Efficient Pattern Matching</h4>
-                    <div class="code-block">
-<span class="comment">// Cari sync pattern dalam buffer 15 bytes</span>
-<span class="keyword">for</span> (<span class="keyword">int</span> i = <span class="number">0</span>; i < <span class="number">10</span>; i++) {
-  <span class="keyword">if</span> (response[i] == SYNC1 && 
-      response[i+<span class="number">1</span>] == SYNC2 && 
-      response[i+<span class="number">2</span>] == slaveID) {
-    <span class="comment">// Pattern found, extract data</span>
-    <span class="keyword">break</span>;
-  }
-}
-                    </div>
-                </div>
-                
-                <div class="info-box">
-                    <h4>4. EEPROM Update Only When Changed</h4>
-                    <div class="code-block">
-<span class="comment">// EEPROM.update() hanya write jika berbeda</span>
-<span class="keyword">void</span> <span class="function">saveSlaveToEEPROM</span>(<span class="keyword">int</span> base, SlaveData &data) {
-  EEPROM.<span class="function">update</span>(base + <span class="number">0</span>, data.pb2);
-  EEPROM.<span class="function">update</span>(base + <span class="number">1</span>, (data.analog >> <span class="number">8</span>) & <span class="number">0xFF</span>);
-  EEPROM.<span class="function">update</span>(base + <span class="number">2</span>, data.analog & <span class="number">0xFF</span>);
-  EEPROM.<span class="function">update</span>(base + <span class="number">3</span>, data.counter);
-}
-                </div>
-                </div>
-                
-                <h3>🎯 Memory Usage</h3>
-                
-                <table class="protocol-table">
-                    <tr>
-                        <th>Component</th>
-                        <th>Size</th>
-                        <th>Location</th>
-                    </tr>
-                    <tr>
-                        <td><strong>SlaveData Struct</strong></td>
-                        <td>5 bytes × 3</td>
-                        <td>SRAM (Master)</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Response Buffer</strong></td>
-                        <td>8 bytes</td>
-                        <td>SRAM (Slave)</td>
-                    </tr>
-                    <tr>
-                        <td><strong>SPI Read Buffer</strong></td>
-                        <td>15 bytes</td>
-                        <td>Stack (Master)</td>
-                    </tr>
-                    <tr>
-                        <td><strong>EEPROM Storage</strong></td>
-                        <td>4 bytes × 3</td>
-                        <td>EEPROM (Master)</td>
-                    </tr>
-                    <tr>
-                        <td><strong>LCD Buffer</strong></td>
-                        <td>32 bytes</td>
-                        <td>Library internal</td>
-                    </tr>
-                </table>
-                
-                <h3>⚠️ Error Handling</h3>
-                
-                <div class="info-box">
-                    <ul>
-                        <li><strong>Checksum Mismatch:</strong> Return 0xFF/0xFFFF sebagai error indicator</li>
-                        <li><strong>Timeout Protection:</strong> Master hanya baca 15 bytes maksimal</li>
-                        <li><strong>State Reset:</strong> Slave reset state machine saat SS deasserted</li>
-                        <li><strong>Validation:</strong> Master verifikasi Slave ID dan checksum</li>
-                        <li><strong>LCD Status:</strong> Display "OK" atau "ER" untuk setiap slave</li>
-                        <li><strong>EEPROM Persistence:</strong> Data tersimpan meski komunikasi gagal</li>
-                    </ul>
-                </div>
-                
-                <h3>🔍 Debugging Features</h3>
-                
-                <div class="code-block">
-<span class="comment">// Slave debug output setiap 1 detik</span>
-<span class="keyword">if</span> (millis() - lastPrint >= <span class="number">1000</span>) {
-  lastPrint = millis();
-  Serial.<span class="function">print</span>(<span class="string">"A:"</span>); Serial.<span class="function">print</span>(analogVal);
-  Serial.<span class="function">print</span>(<span class="string">" CNT:"</span>); Serial.<span class="function">print</span>(cnt);
-  Serial.<span class="function">print</span>(<span class="string">" PB2:"</span>); Serial.<span class="function">print</span>(pb2);
-  Serial.<span class="function">print</span>(<span class="string">" PB1:"</span>); Serial.<span class="function">println</span>(pb1);
-}
-                </div>
-            </div>
-            
-            <!-- Summary Slide -->
-            <div class="slide">
-                <h2>📚 Ringkasan Sistem</h2>
-                
-                <div class="info-box">
-                    <h3>🎯 Arsitektur 3-Layer</h3>
-                    <ol style="line-height: 2;">
-                        <li><strong>PC Layer:</strong> UART Serial interface (115200 baud) untuk kontrol dan monitoring</li>
-                        <li><strong>Master Layer:</strong> Arduino Mega sebagai koordinator, mengelola SPI bus, LCD display, dan EEPROM</li>
-                        <li><strong>Slave Layer:</strong> 3× Arduino sebagai sensor node dengan interrupt-driven response</li>
-                    </ol>
-                </div>
-                
-                <div class="info-box">
-                    <h3>📡 Custom SPI Protocol Stack</h3>
-                    <div style="background: white; padding: 20px; border-radius: 8px; margin: 15px 0;">
-                        <div style="text-align: center; font-family: monospace;">
-                            <div style="background: #ff6b6b; color: white; padding: 10px; margin: 5px; border-radius: 5px;">Application Layer: PC Commands (XY format)</div>
-                            <div style="background: #4ecdc4; color: white; padding: 10px; margin: 5px; border-radius: 5px;">Protocol Layer: Sync + ID + CMD + Checksum</div>
-                            <div style="background: #45b7d1; color: white; padding: 10px; margin: 5px; border-radius: 5px;">Transport Layer: SPI Hardware (MOSI/MISO/SCK/SS)</div>
-                            <div style="background: #667eea; color: white; padding: 10px; margin: 5px; border-radius: 5px;">Physical Layer: 4-wire serial bus</div>
-                        </div>
-                    </div>
-                </div>
-                
-                <h3>✨ Key Features</h3>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
-                    <div class="info-box" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none;">
-                        <h4 style="color: white;">🚀 Performance</h4>
-                        <ul>
-                            <li>100 Hz data streaming</li>
-                            <li>~2.8 ms latency</li>
-                            <li>Non-blocking architecture</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="info-box" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; border: none;">
-                        <h4 style="color: white;">🔒 Reliability</h4>
-                        <ul>
-                            <li>XOR checksum validation</li>
-                            <li>State machine parsing</li>
-                            <li>EEPROM persistence</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="info-box" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none;">
-                        <h4 style="color: white;">🎛️ Flexibility</h4>
-                        <ul>
-                            <li>3 independent slaves</li>
-                            <li>7 data combinations</li>
-                            <li>Configurable intervals</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="info-box" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; border: none;">
-                        <h4 style="color: white;">📊 Monitoring</h4>
-                        <ul>
-                            <li>Real-time LCD display</li>
-                            <li>PC serial streaming</li>
-                            <li>Debug output available</li>
-                        </ul>
-                    </div>
-                </div>
-                
-                <h3>🔄 Data Flow Summary</h3>
-                
-                <div class="diagram">
-                    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: left;">
-                        <div style="margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #667eea; border-radius: 4px;">
-                            <strong>1. PC Input:</strong> User mengetik command "22" (Slave 2, Data Analog)
-                        </div>
-                        <div style="margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #667eea; border-radius: 4px;">
-                            <strong>2. UART Transfer:</strong> Serial 115200 baud → Master Arduino
-                        </div>
-                        <div style="margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #667eea; border-radius: 4px;">
-                            <strong>3. Master Parse:</strong> Ekstrak Slave ID=2, Data Select=2
-                        </div>
-                        <div style="margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #667eea; border-radius: 4px;">
-                            <strong>4. SPI Request:</strong> Master kirim [0xFF, 0xFE, 0x02, 0x02, 0x00]
-                        </div>
-                        <div style="margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #667eea; border-radius: 4px;">
-                            <strong>5. Slave Process:</strong> ISR state machine → prepareResponse()
-                        </div>
-                        <div style="margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #667eea; border-radius: 4px;">
-                            <strong>6. SPI Response:</strong> Slave kirim [0xFF, 0xFE, 0x02, HIGH, LOW, CS]
-                        </div>
-                        <div style="margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #667eea; border-radius: 4px;">
-                            <strong>7. Master Parse:</strong> Extract & validate → analogValue = 512
-                        </div>
-                        <div style="margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #667eea; border-radius: 4px;">
-                            <strong>8. EEPROM Save:</strong> Persist data untuk recovery
-                        </div>
-                        <div style="margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #667eea; border-radius: 4px;">
-                            <strong>9. UART Output:</strong> Serial print ">>> 512" → PC
-                        </div>
-                        <div style="margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #667eea; border-radius: 4px;">
-                            <strong>10. Repeat:</strong> Loop setiap 10ms hingga "STOP" command
-                        </div>
-                    </div>
-                </div>
-                
-                <h3>💡 Pembelajaran Penting</h3>
-                
-                <div class="info-box">
-                    <ul>
-                        <li><strong>SPI adalah protocol hardware level:</strong> Hanya transfer byte-by-byte, butuh custom protocol untuk struktur data</li>
-                        <li><strong>State machine esensial:</strong> ISR harus simple dan cepat, state machine ideal untuk parsing sequential</li>
-                        <li><strong>Timing is critical:</strong> Delays yang tepat memastikan komunikasi stable</li>
-                        <li><strong>Non-blocking design:</strong> Hindari delay() panjang, gunakan timer-based checking</li>
-                        <li><strong>Data consistency:</strong> Snapshot data sebelum transmisi untuk hindari race condition</li>
-                        <li><strong>Error handling:</strong> Selalu validasi dengan checksum dan berikan fallback mechanism</li>
-                        <li><strong>Debugging crucial:</strong> Serial monitor dan LCD display sangat membantu troubleshooting</li>
-                    </ul>
-                </div>
-                
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; text-align: center; margin-top: 30px;">
-                    <h3 style="color: white; margin-bottom: 10px;">🎉 Sistem Siap Digunakan!</h3>
-                    <p style="font-size: 1.1em;">Multi-slave SPI communication dengan real-time monitoring dan robust error handling</p>
+                <div class="feature-card">
+                    <div class="feature-icon">🖥️</div>
+                    <h3>PC Interface</h3>
+                    <p>Serial command control</p>
                 </div>
             </div>
         </div>
-        
-        <div class="footer">
-            <p><strong>Sistem Komunikasi SPI Master-Slave</strong></p>
-            <p>Dokumentasi Teknis - Arduino Mega 2560 & Arduino Uno</p>
-            <p style="margin-top: 10px; font-size: 0.9em; color: #999;">
-                Custom Protocol | Non-blocking Architecture | Real-time Data Streaming
-            </p>
+
+        <!-- Slide 2: System Architecture -->
+        <div class="slide">
+            <h1>📐 Arsitektur Sistem</h1>
+            
+            <h2>Hardware Configuration</h2>
+            <div class="connection-diagram">
+                <h3>Master (Arduino Mega 2560)</h3>
+                <div class="pin-connection">
+                    <div class="pin-master">MOSI (51)</div>
+                    <div class="pin-arrow">────────→</div>
+                    <div class="pin-slave">MOSI (11) Slave 1/2/3</div>
+                </div>
+                <div class="pin-connection">
+                    <div class="pin-master">MISO (50)</div>
+                    <div class="pin-arrow">←────────</div>
+                    <div class="pin-slave">MISO (12) Slave 1/2/3</div>
+                </div>
+                <div class="pin-connection">
+                    <div class="pin-master">SCK (52)</div>
+                    <div class="pin-arrow">────────→</div>
+                    <div class="pin-slave">SCK (13) Slave 1/2/3</div>
+                </div>
+                <div class="pin-connection">
+                    <div class="pin-master">SS1 (A13)</div>
+                    <div class="pin-arrow">────────→</div>
+                    <div class="pin-slave">SS (2) Slave 1</div>
+                </div>
+                <div class="pin-connection">
+                    <div class="pin-master">SS2 (A14)</div>
+                    <div class="pin-arrow">────────→</div>
+                    <div class="pin-slave">SS (2) Slave 2</div>
+                </div>
+                <div class="pin-connection">
+                    <div class="pin-master">SS3 (A15)</div>
+                    <div class="pin-arrow">────────→</div>
+                    <div class="pin-slave">SS (2) Slave 3</div>
+                </div>
+            </div>
+
+            <h2>SPI Configuration</h2>
+            <table>
+                <tr>
+                    <th>Parameter</th>
+                    <th>Master</th>
+                    <th>Slave</th>
+                </tr>
+                <tr>
+                    <td>Mode</td>
+                    <td>SPI Master</td>
+                    <td>SPI Slave</td>
+                </tr>
+                <tr>
+                    <td>Clock Speed</td>
+                    <td>2 MHz (DIV8)</td>
+                    <td>Follow Master</td>
+                </tr>
+                <tr>
+                    <td>Data Mode</td>
+                    <td>SPI_MODE0</td>
+                    <td>SPI_MODE0</td>
+                </tr>
+                <tr>
+                    <td>Bit Order</td>
+                    <td>MSBFIRST</td>
+                    <td>MSBFIRST</td>
+                </tr>
+                <tr>
+                    <td>Serial Baud</td>
+                    <td>115200</td>
+                    <td>9600</td>
+                </tr>
+            </table>
         </div>
-    </div>
+
+        <!-- Slide 3: Protocol Details -->
+        <div class="slide">
+            <h1>📦 Format Paket Komunikasi</h1>
+            
+            <h2>Request Packet (Master → Slave)</h2>
+            <div class="packet-diagram">
+                <div class="packet-byte">
+                    <div class="label">SYNC1</div>
+                    <div class="value">0xFF</div>
+                </div>
+                <div class="packet-byte">
+                    <div class="label">SYNC2</div>
+                    <div class="value">0xFE</div>
+                </div>
+                <div class="packet-byte">
+                    <div class="label">SLAVE ID</div>
+                    <div class="value">0x01-0x03</div>
+                </div>
+                <div class="packet-byte">
+                    <div class="label">COMMAND</div>
+                    <div class="value">0x01-0x03</div>
+                </div>
+                <div class="packet-byte">
+                    <div class="label">CHECKSUM</div>
+                    <div class="value">ID ^ CMD</div>
+                </div>
+            </div>
+
+            <div class="protocol-box">
+<span class="comment">// Contoh Request: Read PB2 dari Slave 1</span>
+[<span class="number">0xFF</span>] [<span class="number">0xFE</span>] [<span class="number">0x01</span>] [<span class="number">0x01</span>] [<span class="number">0x00</span>]
+ SYNC1   SYNC2   ID=1    CMD=1   CS=1^1
+            </div>
+
+            <h2>Response Packet (Slave → Master)</h2>
+            
+            <h3>Single Byte Data (CMD 0x01, 0x03)</h3>
+            <div class="packet-diagram">
+                <div class="packet-byte">
+                    <div class="label">SYNC1</div>
+                    <div class="value">0xFF</div>
+                </div>
+                <div class="packet-byte">
+                    <div class="label">SYNC2</div>
+                    <div class="value">0xFE</div>
+                </div>
+                <div class="packet-byte">
+                    <div class="label">SLAVE ID</div>
+                    <div class="value">0x01-0x03</div>
+                </div>
+                <div class="packet-byte">
+                    <div class="label">DATA</div>
+                    <div class="value">0x00-0xFF</div>
+                </div>
+                <div class="packet-byte">
+                    <div class="label">CHECKSUM</div>
+                    <div class="value">ID ^ DATA</div>
+                </div>
+            </div>
+
+            <h3>16-bit Sensor Data (CMD 0x02)</h3>
+            <div class="packet-diagram">
+                <div class="packet-byte">
+                    <div class="label">SYNC1</div>
+                    <div class="value">0xFF</div>
+                </div>
+                <div class="packet-byte">
+                    <div class="label">SYNC2</div>
+                    <div class="value">0xFE</div>
+                </div>
+                <div class="packet-byte">
+                    <div class="label">SLAVE ID</div>
+                    <div class="value">0x01-0x03</div>
+                </div>
+                <div class="packet-byte">
+                    <div class="label">DATA HIGH</div>
+                    <div class="value">0x00-0xFF</div>
+                </div>
+                <div class="packet-byte">
+                    <div class="label">DATA LOW</div>
+                    <div class="value">0x00-0xFF</div>
+                </div>
+                <div class="packet-byte">
+                    <div class="label">CHECKSUM</div>
+                    <div class="value">ID^H^L</div>
+                </div>
+            </div>
+
+            <div class="protocol-box">
+<span class="comment">// Contoh Response: ADC = 832 (0x0340)</span>
+[<span class="number">0xFF</span>] [<span class="number">0xFE</span>] [<span class="number">0x01</span>] [<span class="number">0x03</span>] [<span class="number">0x40</span>] [<span class="number">0x42</span>]
+ SYNC1   SYNC2   ID=1    HIGH    LOW     CS=1^3^40
+            </div>
+        </div>
+
+        <!-- Slide 4: Command Set -->
+        <div class="slide">
+            <h1>🎮 Command Set</h1>
+            
+            <h2>Master Commands (SPI Protocol)</h2>
+            <table>
+                <tr>
+                    <th>Command</th>
+                    <th>Value</th>
+                    <th>Description</th>
+                    <th>Data Type</th>
+                    <th>Response Size</th>
+                </tr>
+                <tr>
+                    <td><code>CMD_READ_VALUE</code></td>
+                    <td>0x01</td>
+                    <td>Read PB2 button state</td>
+                    <td>uint8_t</td>
+                    <td>5 bytes</td>
+                </tr>
+                <tr>
+                    <td><code>CMD_READ_SENSOR</code></td>
+                    <td>0x02</td>
+                    <td>Read analog sensor (A0)</td>
+                    <td>uint16_t</td>
+                    <td>6 bytes</td>
+                </tr>
+                <tr>
+                    <td><code>CMD_READ_COUNTER</code></td>
+                    <td>0x03</td>
+                    <td>Read interrupt counter</td>
+                    <td>uint8_t</td>
+                    <td>5 bytes</td>
+                </tr>
+            </table>
+
+            <h2>PC Request Commands (Serial Interface)</h2>
+            <div class="highlight">
+                <h3>Format: XY (2 digit)</h3>
+                <p><strong>X</strong> = Slave ID (1-3)</p>
+                <p><strong>Y</strong> = Data Selection (1-7)</p>
+            </div>
+
+            <table>
+                <tr>
+                    <th>Command</th>
+                    <th>Description</th>
+                    <th>Output Format</th>
+                </tr>
+                <tr>
+                    <td>X1</td>
+                    <td>PB2 only</td>
+                    <td><code>>>> 1</code></td>
+                </tr>
+                <tr>
+                    <td>X2</td>
+                    <td>ADC only</td>
+                    <td><code>>>> 832</code></td>
+                </tr>
+                <tr>
+                    <td>X3</td>
+                    <td>PB2 + ADC</td>
+                    <td><code>>>> 1 832</code></td>
+                </tr>
+                <tr>
+                    <td>X4</td>
+                    <td>Counter only</td>
+                    <td><code>>>> 5</code></td>
+                </tr>
+                <tr>
+                    <td>X5</td>
+                    <td>PB2 + Counter</td>
+                    <td><code>>>> 1 5</code></td>
+                </tr>
+                <tr>
+                    <td>X6</td>
+                    <td>ADC + Counter</td>
+                    <td><code>>>> 832 5</code></td>
+                </tr>
+                <tr>
+                    <td>X7</td>
+                    <td>All data</td>
+                    <td><code>>>> 1 832 5</code></td>
+                </tr>
+                <tr>
+                    <td>STOP</td>
+                    <td>Stop display</td>
+                    <td><code>[Display stopped]</code></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- Slide 5: Data Flow -->
+        <div class="slide">
+            <h1>🔄 Alur Data Lengkap: PC → Master → Slave</h1>
+            
+            <h2>Sequence Diagram</h2>
+            <div class="sequence-diagram">
+                <div class="sequence-step">
+                    <div class="actor">PC</div>
+                    <div class="message">Kirim "13"</div>
+                    <div class="actor">Master</div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="actor">Master</div>
+                    <div class="message">[0xFF 0xFE 0x01 0x01 0x00]</div>
+                    <div class="actor">Slave 1</div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="actor">Slave 1</div>
+                    <div class="message">[0xFF 0xFE 0x01 0x01 0x00]</div>
+                    <div class="actor">Master</div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="actor">Master</div>
+                    <div class="message">[0xFF 0xFE 0x01 0x02 0x03]</div>
+                    <div class="actor">Slave 1</div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="actor">Slave 1</div>
+                    <div class="message">[0xFF 0xFE 0x01 0x03 0x40 0x42]</div>
+                    <div class="actor">Master</div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="actor">Master</div>
+                    <div class="message">Save to EEPROM</div>
+                    <div class="actor">EEPROM</div>
+                </div>
+                
+                <div class="sequence-step">
+                    <div class="actor">Master</div>
+                    <div class="message">>>> 1 832</div>
+                    <div class="actor">PC</div>
+                </div>
+            </div>
+
+            <h2>Step-by-Step Process</h2>
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <h3>Step 1: PC Request</h3>
+                    <p>PC mengirim command "13" via Serial (115200 baud)</p>
+                    <div class="code-block">
+PC Terminal: <span class="string">13</span> <span class="comment">// Slave 1, PB2+ADC</span>
+                    </div>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>Step 2: Master Parse Command</h3>
+                    <p>Master parsing: X=1 (Slave 1), Y=3 (PB2+ADC)</p>
+                    <div class="code-block">
+<span class="keyword">uint8_t</span> slaveNum = <span class="number">1</span>;
+<span class="keyword">uint8_t</span> dataSelect = <span class="number">3</span>;
+requestedSlave = slaveNum;
+requestedData = dataSelect;
+pcRequestActive = <span class="keyword">true</span>;
+                    </div>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>Step 3: Master Request PB2 (CMD 0x01)</h3>
+                    <p>Master mengirim paket request ke Slave 1</p>
+                    <div class="code-block">
+<span class="comment">// Activate SS pin (LOW)</span>
+digitalWrite(SS_SLAVE1, LOW);
+
+<span class="comment">// Send packet</span>
+SPI.transfer(<span class="number">0xFF</span>);  <span class="comment">// SYNC1</span>
+SPI.transfer(<span class="number">0xFE</span>);  <span class="comment">// SYNC2</span>
+SPI.transfer(<span class="number">0x01</span>);  <span class="comment">// Slave ID</span>
+SPI.transfer(<span class="number">0x01</span>);  <span class="comment">// CMD_READ_VALUE</span>
+SPI.transfer(<span class="number">0x00</span>);  <span class="comment">// Checksum: 0x01 ^ 0x01</span>
+                    </div>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>Step 4: Slave Process Request</h3>
+                    <p>Slave state machine memproses paket</p>
+                    <div class="code-block">
+<span class="comment">// SPI Interrupt Handler (Slave)</span>
+ISR(SPI_STC_vect) {
+    <span class="keyword">uint8_t</span> received = SPDR;
     
-    <script>
-        let currentSlide = 0;
-        const slides = document.querySelectorAll('.slide');
-        const navButtons = document.querySelectorAll('.nav-btn');
-        
-        function showSlide(index) {
-            // Hide all slides
-            slides.forEach(slide => slide.classList.remove('active'));
-            navButtons.forEach(btn => btn.classList.remove('active'));
-            
-            // Show selected slide
-            slides[index].classList.add('active');
-            navButtons[index].classList.add('active');
-            
-            currentSlide = index;
-            
-            // Scroll to top
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+    <span class="comment">// State: WAIT_SYNC1 → WAIT_SYNC2 → WAIT_ID</span>
+    <span class="comment">// → WAIT_CMD → WAIT_CHECKSUM → SEND_RESPONSE</span>
+    
+    <span class="keyword">if</span> (currentState == WAIT_CHECKSUM) {
+        <span class="keyword">if</span> (checksum == expected) {
+            prepareResponse(CMD_READ_VALUE);
         }
-        
-        // Keyboard navigation
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowRight' && currentSlide < slides.length - 1) {
-                showSlide(currentSlide + 1);
-            } else if (e.key === 'ArrowLeft' && currentSlide > 0) {
-                showSlide(currentSlide - 1);
-            }
-        });
-    </script>
-</body>
-</html>
-                
-                <h3>📊 Data yang Dikelola</h3>
-                <table class="protocol-table">
-                    <tr>
-                        <th>Jenis Data</th>
-                        <th>Sumber</th>
-                        <th>Ukuran</th>
-                        <th>Keterangan</th>
-                    </tr>
-                    <tr>
-                        <td><strong>PB2</strong></td>
-                        <td>Pin A7 (Button)</td>
-                        <td>1 byte</td>
-                        <td>Status toggle button (0 atau 1)</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Analog</strong></td>
-                        <td>Pin A0 (Sensor)</td>
-                        <td>2 bytes</td>
-                        <td>Nilai ADC 10-bit (0-1023)</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Counter</strong></td>
-                        <td>Pin 3 (Interrupt)</td>
-                        <td>1 byte</td>
-                        <td>Hitungan interrupt event</td>
-                    </tr>
-                </table>
-                
-                <div class="info-box">
-                    <h3>⚡ Fitur Khusus</h3>
-                    <ul>
-                        <li><strong>Non-blocking Architecture:</strong> Semua operasi dirancang asynchronous untuk performa optimal</li>
-                        <li><strong>Custom Protocol:</strong> Sync bytes, checksums, dan state machine untuk reliable communication</li>
-                        <li><strong>Fast Polling:</strong> Update interval 10ms untuk real-time data streaming</li>
-                        <li><strong>Data Persistence:</strong> Auto-save ke EEPROM untuk recovery</li>
-                        <li><strong>LCD Display:</strong> Rotasi otomatis menampilkan status semua slave</li>
-                    </ul>
-                </div>
-            </div>
-            
-            <!-- Slide 1: Arsitektur -->
-            <div class="slide">
-                <h2>🏗️ Arsitektur Sistem</h2>
-                
-                <div class="diagram">
-                    <h3>Topologi Komunikasi</h3>
-                    <div style="margin: 30px 0;">
-                        <div class="flow-box box-pc">PC/Computer</div>
-                        <div class="arrow">⬇️</div>
-                        <div style="font-size: 12px; color: #666; margin: 10px 0;">UART Serial (115200 baud)</div>
-                        <div class="arrow">⬇️</div>
-                        <div class="flow-box box-master">Master Arduino</div>
-                        <div class="arrow">⬇️</div>
-                        <div style="font-size: 12px; color: #666; margin: 10px 0;">SPI Bus</div>
-                        <div class="arrow">⬇️</div>
-                        <div style="display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;">
-                            <div class="flow-box box-slave">Slave 1<br>(ID: 0x01)</div>
-                            <div class="flow-box box-slave">Slave 2<br>(ID: 0x02)</div>
-                            <div class="flow-box box-slave">Slave 3<br>(ID: 0x03)</div>
-                        </div>
+    }
+}
                     </div>
                 </div>
-                
-                <h3>🔌 Koneksi Hardware</h3>
-                <table class="protocol-table">
-                    <tr>
-                        <th>Signal</th>
-                        <th>Pin Master</th>
-                        <th>Pin Slave</th>
-                        <th>Fungsi</th>
-                    </tr>
-                    <tr>
-                        <td><strong>MOSI</strong></td>
-                        <td>51</td>
-                        <td>11</td>
-                        <td>Master Out Slave In - Data dari Master ke Slave</td>
-                    </tr>
-                    <tr>
-                        <td><strong>MISO</strong></td>
-                        <td>50</td>
-                        <td>12</td>
-                        <td>Master In Slave Out - Data dari Slave ke Master</td>
-                    </tr>
-                    <tr>
-                        <td><strong>SCK</strong></td>
-                        <td>52</td>
-                        <td>13</td>
-                        <td>Serial Clock - Clock signal dari Master</td>
-                    </tr>
-                    <tr>
-                        <td><strong>SS1</strong></td>
-                        <td>A13</td>
-                        <td>2</td>
-                        <td>Slave Select untuk Slave 1</td>
-                    </tr>
-                    <tr>
-                        <td><strong>SS2</strong></td>
-                        <td>A14</td>
-                        <td>2</td>
-                        <td>Slave Select untuk Slave 2</td>
-                    </tr>
-                    <tr>
-                        <td><strong>SS3</strong></td>
-                        <td>A15</td>
-                        <td>2</td>
-                        <td>Slave Select untuk Slave 3</td>
-                    </tr>
-                </table>
-                
-                <h3>📡 Komunikasi UART (PC ↔ Master)</h3>
-                <div class="info-box">
-                    <ul>
-                        <li><strong>Baud Rate:</strong> 115200 bps (high speed untuk real-time data)</li>
-                        <li><strong>Format Command:</strong> 2 karakter ASCII (XY)</li>
-                        <li><strong>Data Flow:</strong> PC mengirim command → Master merespon dengan data stream</li>
-                        <li><strong>Kontrol:</strong> Command "STOP" untuk menghentikan streaming</li>
-                    </ul>
-                </div>
-                
-                <h3>🔄 Komunikasi SPI (Master ↔ Slave)</h3>
-                <div class="info-box">
-                    <ul>
-                        <li><strong>Mode:</strong> SPI Mode 0 (CPOL=0, CPHA=0)</li>
-                        <li><strong>Clock Speed:</strong> SPI_CLOCK_DIV8 (2 MHz pada 16 MHz Arduino)</li>
-                        <li><strong>Bit Order:</strong> MSB First</li>
-                        <li><strong>Full Duplex:</strong> Simultaneous transmit dan receive</li>
-                        <li><strong>Slave Selection:</strong> Active LOW pada SS pin</li>
-                    </ul>
-                </div>
-            </div>
-            
-            <!-- Slide 2: Protocol SPI -->
-            <div class="slide">
-                <h2>📡 Protocol SPI Custom</h2>
-                
-                <div class="info-box">
-                    <h3>🎯 Mengapa Custom Protocol?</h3>
-                    <p>SPI hardware hanya menyediakan <strong>byte-level transfer</strong>. Untuk komunikasi yang reliable, kita membutuhkan:</p>
-                    <ul>
-                        <li><strong>Synchronization:</strong> Identifikasi awal dan akhir paket</li>
-                        <li><strong>Addressing:</strong> Identifikasi slave mana yang dituju</li>
-                        <li><strong>Error Detection:</strong> Verifikasi integritas data</li>
-                        <li><strong>Command Structure:</strong> Jenis data yang diminta</li>
-                    </ul>
-                </div>
-                
-                <h3>🔐 Komponen Protocol</h3>
-                
-                <table class="protocol-table">
-                    <tr>
-                        <th>Komponen</th>
-                        <th>Nilai</th>
-                        <th>Fungsi</th>
-                    </tr>
-                    <tr>
-                        <td><strong>SYNC1</strong></td>
-                        <td>0xFF</td>
-                        <td>Byte pertama untuk sync pattern</td>
-                    </tr>
-                    <tr>
-                        <td><strong>SYNC2</strong></td>
-                        <td>0xFE</td>
-                        <td>Byte kedua untuk sync pattern</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Slave ID</strong></td>
-                        <td>0x01, 0x02, 0x03</td>
-                        <td>Identifikasi slave yang dituju</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Command</strong></td>
-                        <td>0x01, 0x02, 0x03</td>
-                        <td>Jenis data yang diminta</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Checksum</strong></td>
-                        <td>ID XOR CMD (XOR data)</td>
-                        <td>Verifikasi integritas paket</td>
-                    </tr>
-                </table>
-                
-                <h3>📝 Daftar Command</h3>
-                
-                <div class="code-block">
-<span class="keyword">#define</span> CMD_READ_VALUE   <span class="number">0x01</span>  <span class="comment">// Baca PB2 (1 byte)</span>
-<span class="keyword">#define</span> CMD_READ_SENSOR  <span class="number">0x02</span>  <span class="comment">// Baca Analog (2 bytes)</span>
-<span class="keyword">#define</span> CMD_READ_COUNTER <span class="number">0x03</span>  <span class="comment">// Baca Counter (1 byte)</span>
-                </div>
-                
-                <h3>✅ Mekanisme Checksum</h3>
-                
-                <div class="info-box">
-                    <p><strong>Request Checksum:</strong></p>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>Step 5: Slave Send Response</h3>
+                    <p>Slave mengirim data PB2 kembali ke Master</p>
                     <div class="code-block">
-checksum = Slave_ID <span class="keyword">XOR</span> Command
-<span class="comment">// Contoh: Slave 1, CMD_READ_SENSOR</span>
-checksum = <span class="number">0x01</span> <span class="keyword">XOR</span> <span class="number">0x02</span> = <span class="number">0x03</span>
+<span class="comment">// Response packet</span>
+responseBuffer[<span class="number">0</span>] = <span class="number">0xFF</span>;        <span class="comment">// SYNC1</span>
+responseBuffer[<span class="number">1</span>] = <span class="number">0xFE</span>;        <span class="comment">// SYNC2</span>
+responseBuffer[<span class="number">2</span>] = <span class="number">0x01</span>;        <span class="comment">// Slave ID</span>
+responseBuffer[<span class="number">3</span>] = pb2Snapshot;  <span class="comment">// Data = 1</span>
+responseBuffer[<span class="number">4</span>] = <span class="number">0x01</span> ^ pb2;  <span class="comment">// Checksum</span>
                     </div>
-                    
-                    <p style="margin-top: 20px;"><strong>Response Checksum (1 byte data):</strong></p>
+                </div>
+
+                <div class="flow-arrow">↓</div>
+
+                <div class="flow-step">
+                    <h3>Step 6: Master Read Response</h3>
+                    <p>Master membaca response dan validate checksum</p>
                     <div class="code-block">
-checksum = Slave_ID <span class="keyword">XOR</span> Data
-<span class="comment">// Contoh: Slave 1, PB2=1</span>
-checksum = <span class="number">0x01</span> <span class="keyword">XOR</span> <span class="number">0x01</span> = <span class="number">0x00</span>
-                    </div>
-                    
-                    <p style="margin-top: 20px;"><strong>Response Checksum (2 bytes data):</strong></p>
-                    <div class="code-block">
-checksum = Slave_ID <span class="keyword">XOR</span> Data_High <span class="keyword">XOR</span> Data_Low
-<span class="comment">// Contoh: Slave 1, Analog=512 (0x0200)</span>
-checksum = <span class="number">0x01</span> <span class="keyword">XOR</span> <span class="number">0x02</span> <span class="keyword">XOR</span> <span class="number">0x00</span> = <span class="number">0x03</span>
-                    </div>
-                </div>
-                
-                <h3>🔄 SPI Timing</h3>
-                
-                <div class="timing-diagram">
-                    <div class="timeline">
-                        <div class="timeline-label">SS Assert</div>
-                        <div class="timeline-bar">20 μs</div>
-                    </div>
-                    <div class="timeline">
-                        <div class="timeline-label">Byte Transfer</div>
-                        <div class="timeline-bar">10 μs delay</div>
-                    </div>
-                    <div class="timeline">
-                        <div class="timeline-label">Command Wait</div>
-                        <div class="timeline-bar">50 μs</div>
-                    </div>
-                    <div class="timeline">
-                        <div class="timeline-label">Response Read</div>
-                        <div class="timeline-bar">15 bytes × 10 μs</div>
-                    </div>
-                    <div class="timeline">
-                        <div class="timeline-label">SS Deassert</div>
-                        <div class="timeline-bar">End</div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Slide 3: Format Paket -->
-            <div class="slide">
-                <h2>📦 Format Paket Request & Response</h2>
-                
-                <h3>📤 Request Packet (Master → Slave)</h3>
-                
-                <div class="packet-diagram">
-                    <div class="packet-byte">
-                        <div class="label">Byte 0</div>
-                        <div class="value">0xFF</div>
-                        <div class="label">SYNC1</div>
-                    </div>
-                    <div class="packet-byte">
-                        <div class="label">Byte 1</div>
-                        <div class="value">0xFE</div>
-                        <div class="label">SYNC2</div>
-                    </div>
-                    <div class="packet-byte">
-                        <div class="label">Byte 2</div>
-                        <div class="value">0x01-0x03</div>
-                        <div class="label">Slave ID</div>
-                    </div>
-                    <div class="packet-byte">
-                        <div class="label">Byte 3</div>
-                        <div class="value">0x01-0x03</div>
-                        <div class="label">Command</div>
-                    </div>
-                    <div class="packet-byte">
-                        <div class="label">Byte 4</div>
-                        <div class="value">ID^CMD</div>
-                        <div class="label">Checksum</div>
-                    </div>
-                </div>
-                
-                <div class="info-box">
-                    <p><strong>Total: 5 bytes</strong></p>
-                    <p>Setelah mengirim request, master langsung membaca 15 bytes untuk mencari response pattern</p>
-                </div>
-                
-                <h3>📥 Response Packet Type 1: Single Byte (PB2 / Counter)</h3>
-                
-                <div class="packet-diagram">
-                    <div class="packet-byte">
-                        <div class="label">Byte 0</div>
-                        <div class="value">0xFF</div>
-                        <div class="label">SYNC1</div>
-                    </div>
-                    <div class="packet-byte">
-                        <div class="label">Byte 1</div>
-                        <div class="value">0xFE</div>
-                        <div class="label">SYNC2</div>
-                    </div>
-                    <div class="packet-byte">
-                        <div class="label">Byte 2</div>
-                        <div class="value">0x01-0x03</div>
-                        <div class="label">Slave ID</div>
-                    </div>
-                    <div class="packet-byte">
-                        <div class="label">Byte 3</div>
-                        <div class="value">Data</div>
-                        <div class="label">Value</div>
-                    </div>
-                    <div class="packet-byte">
-                        <div class="label">Byte 4</div>
-                        <div class="value">ID^Data</div>
-                        <div class="label">Checksum</div>
-                    </div>
-                </div>
-                
-                <div class="info-box">
-                    <p><strong>Total: 5 bytes</strong></p>
-                    <p>Digunakan untuk CMD_READ_VALUE (PB2) dan CMD_READ_COUNTER</p>
-                </div>
-                
-                <h3>📥 Response Packet Type 2: Double Byte (Analog Sensor)</h3>
-                
-                <div class="packet-diagram">
-                    <div class="packet-byte">
-                        <div class="label">Byte 0</div>
-                        <div class="value">0xFF</div>
-                        <div class="label">SYNC1</div>
-                    </div>
-                    <div class="packet-byte">
-                        <div class="label">Byte 1</div>
-                        <div class="value">0xFE</div>
-                        <div class="label">SYNC2</div>
-                    </div>
-                    <div class="packet-byte">
-                        <div class="label">Byte 2</div>
-                        <div class="value">0x01-0x03</div>
-                        <div class="label">Slave ID</div>
-                    </div>
-                    <div class="packet-byte">
-                        <div class="label">Byte 3</div>
-                        <div class="value">High</div>
-                        <div class="label">ADC[15:8]</div>
-                    </div>
-                    <div class="packet-byte">
-                        <div class="label">Byte 4</div>
-                        <div class="value">Low</div>
-                        <div class="label">ADC[7:0]</div>
-                    </div>
-                    <div class="packet-byte">
-                        <div class="label">Byte 5</div>
-                        <div class="value">ID^H^L</div>
-                        <div class="label">Checksum</div>
-                    </div>
-                </div>
+<span class="comment">// Read 15 bytes response</span>
+<span class="keyword">for</span> (<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; <span class="number">15</span>; i++) {
+    response[i] = SPI.transfer(<span class="number">0x00</span>);
